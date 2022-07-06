@@ -21,7 +21,7 @@ import getpass
 import sys
 
 
-#Test
+#Test1
 def print_mod(text, end='\n'):
 	with open("logs/functions-log", "a") as f:
 		print(text, file=f, end=end)
