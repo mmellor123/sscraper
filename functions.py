@@ -51,7 +51,6 @@ def get_progress():
                 with open("config.json", 'w') as f:
                         config["progress"] = {"get_customers": False, "get_accounts": 0, "get_transactions": 0}
                         json.dump(config, f, indent=4)
-        else:
                 #Clear database before starting
                 mydb, cursor = connect_to_db()
                 clear_table("transaction", cursor)
@@ -299,7 +298,7 @@ def login():
 			return False
 		except:
 			pass
-		get_page(base_url + "manager-area/home.xhtml", False)
+		get_page(base_url + "manager-area/home."+ config_common["extension"], False)
 		print_mod("Successfully Logged in")
 		return True
 	except Exception as e:
@@ -321,7 +320,7 @@ def logout():
 		print_mod("SUCCESS")
 	except:
 		print_mod("Couldn't find logout button. Reloading page... ")
-		get_page(base_url + "manager-area/home.xhtml", False)
+		get_page(base_url + "manager-area/home."+config_common["extension"], False)
 		wait = WebDriverWait(driver, 100)
 		wait.until(EC.presence_of_element_located((By.ID, logout_xpath)))
 		driver.find_element(By.ID, logout_xpath).click()
@@ -332,7 +331,7 @@ def get_customers():
 	customers = {}
 	suspended = []
 	try:
-		url = base_url + "manager-area/manage-customers.xhtml"
+		url = base_url + "manager-area/manage-customers."+config_common["extension"]
 		get_page(url, False)
 		wait = WebDriverWait(driver, 100)
 		table_xpath = 'table'
@@ -393,7 +392,7 @@ def get_suspended_accounts():
 
 
 def get_customer_accounts(code):
-	url = base_url + "manager-area/user-profile.xhtml?code=" + code
+	url = base_url + "manager-area/user-profile."+config_common["extension"]+"?code=" + code
 	get_page(url, False)
 	customer = {"accounts": []}
 	accounts = []
@@ -460,7 +459,7 @@ def get_customer_accounts(code):
 
 #Get accounts from Accounting > View Customer Accounts:
 def get_all_accounts():
-	url = base_url + "manager-area/account_wallet_statement_manager.xhtml?walletaccounttype=REGISTERED_CUSTOMER"
+	url = base_url + "manager-area/account_wallet_statement_manager."+ config_common["extension"]+"?walletaccounttype=REGISTERED_CUSTOMER"
 	get_page(url, False)
 	accounts = []
 	time.sleep(10)
@@ -529,7 +528,7 @@ def get_all_transactions():
 	mydb,cursor = connect_to_db()
 	cursor.execute("SELECT customer_code FROM customer")
 	customers = cursor.fetchall()
-	get_page(base_url + "manager-area/wallet_statement_manager.xhtml?search-type=REGISTERED_CUSTOMER", True)
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
 	transactions_start = config["progress"]["get_transactions"]
 	for i in range(transactions_start, len(customers)):
 		code = customers[i][0]
@@ -555,8 +554,8 @@ def run_get_customers():
 	init_environment()
 	init_driver()
 	try:
-		if not login():
-			raise ValueError("Failed to Login in")
+		#if not login():
+		#	raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
@@ -568,17 +567,16 @@ def run_get_customers():
 	except Exception:
 		print_mod(traceback.format_exc())
 	finally:
-		logout()
+		#logout()
 		close_driver()
 
 
 def run_get_transactions():
-        get_progress()
         init_environment()
         init_driver()
         try:
-                if not login():
-                        raise ValueError("Failed to Login in")
+                #if not login():
+                #        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_all_transactions()
@@ -586,7 +584,7 @@ def run_get_transactions():
         except Exception:
                 print_mod(traceback.format_exc())
         finally:
-                logout()
+                #logout()
                 close_driver()
 
 
