@@ -20,6 +20,11 @@ from spotbanc_api import spotbanc_api
 import getpass
 import sys
 
+#TODO
+#1) Test get_transactions and get_customers
+#2) Use testing database
+#3) Cross check customer details
+#4) Test progress data as script runs
 
 #Test1
 def print_mod(text, end='\n'):
@@ -36,13 +41,43 @@ def get_yes_no_input(message):
                 elif response in ['n', 'no']:
                         return False
                 else:
+
                      	print_mod("Please enter either y/yes or n/no")
 
-print_mod("-----------------------------------------")
-print_mod(datetime.today())
+
+
+def get_progress():
+        if(not get_yes_no_input("Continue from saved progress")):
+                with open("config.json", 'w') as f:
+                        config["progress"] = {"get_customers": False, "get_accounts": 0, "get_transactions": 0}
+                        json.dump(config, f, indent=4)
+        else:
+                #Clear database before starting
+                mydb, cursor = connect_to_db()
+                clear_table("transaction", cursor)
+                clear_table("account", cursor)
+                clear_table("customer", cursor)
+                mydb.commit()
+                disconnect_from_db(mydb, cursor)
+
+global config
 with open("config.json", 'r') as f:
-	config = json.load(f)
-config_common = config['common']
+	config=json.load(f)
+global config_common
+config_common=config['common']
+
+def init_environment():
+	global base_url
+	print_mod("-----------------------------------------")
+	print_mod(datetime.today())
+	#Production/Staging?
+	base_url = config_common["staging_url"]
+	print_mod("Running on STAGING ENVIRONEMNT as default... ")
+	if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
+		print_mod("Running on PRODUCTION ENVIRONMENT")
+		base_url = config_common["production_url"]
+	global spotbanc
+	spotbanc = spotbanc_api(base_url + config_common['api'], '200', 'app')
 
 def connect_to_db():
         db_config = config["database"]
@@ -59,36 +94,13 @@ def connect_to_db():
         cursor = mydb.cursor()
         return mydb, cursor
 
-def disconnect_from_db(db, cursor):
-        cursor.close()
-        db.close()
-
 def clear_table(table, cursor):
-        clear_table = "DELETE FROM " + table
-        cursor.execute(clear_table)
+	clear_table = "DELETE FROM " + table
+	cursor.execute(clear_table)
 
-progress = {"get_customers": False, "get_accounts" : 0, "get_transactions" : 0}
-if(get_yes_no_input("Continue from saved progress")):
-	with open("progress.json", 'r') as f:
-		progress = json.load(f)
-else:
-	#Clear database before starting
-	mydb, cursor = connect_to_db()
-	clear_table("transaction", cursor)
-	clear_table("account", cursor)
-	clear_table("customer", cursor)
-	mydb.commit()
-	disconnect_from_db(mydb, cursor)
-
-#Select either staging or production environment
-base_url = config_common["staging_url"]
-print_mod("Running on STAGING ENVIRONEMNT as default... ")
-
-if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
-	print_mod("Running on PRODUCTION ENVIRONMENT")
-	base_url = config_common["production_url"]
-spotbanc = spotbanc_api(base_url + config_common['api'], '200', 'app')
-
+def disconnect_from_db(db, cursor):
+	cursor.close()
+	db.close()
 
 def get_page(url, check_current_page):
 	print_mod("Getting page " + url)
@@ -116,30 +128,32 @@ def get_page(url, check_current_page):
 
 def get_account_ledger(customer_id, customer_code):
 	transactions = []
-	wait = WebDriverWait(driver, 50)
+	wait = WebDriverWait(driver, 60)
 	try:
-		wait.until(EC.presence_of_element_located((By.XPATH, "//input[@id='j_idt62:fromDate_input']")))
+		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
 	except:
 		print_mod("Page not loading. Returning")
 		return transactions
-	start = driver.find_element(By.XPATH, "//input[@id='j_idt62:fromDate_input']")
-	end = driver.find_element(By.XPATH, "//input[@id='j_idt62:toDate_input']")
+	start = driver.find_element(By.ID, 'j_idt62:fromDate_input')
+	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
 	end.clear()
 	start.clear()
 	start.send_keys("23/05/2020")
 	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
-	Select(driver.find_element(By.XPATH, "//select[@id='j_idt62:customer_search']")).select_by_value(customer_id)
+	Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
 	time.sleep(2)
-	accounts = driver.find_element(By.XPATH, "//select[@id='j_idt62:wallet-accounts-list']").find_elements(By.TAG_NAME, 'option')
+	accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
 	account_numbers = {}
 	for account in accounts:
 		account_number = account.text.replace('[', '').replace(']','').split()
 		account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3] + customer_code
 	for account_number in account_numbers:
-		Select(driver.find_element(By.XPATH, "//select[@id='j_idt62:wallet-accounts-list']")).select_by_value(account_number)
+		Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 		driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
+		table_id = 'tbl'
+		wait.until(EC.presence_of_element_located((By.ID, table_id)))
 		while True:
-			table = driver.find_element(By.XPATH, "//table[@id='tbl']")
+			table = driver.find_element(By.ID, table_id)
 			headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
 			rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
 			for row in rows:
@@ -155,7 +169,7 @@ def get_account_ledger(customer_id, customer_code):
 				transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
 				transactions.append(transaction)
 			#Go to next page
-			has_next_page,next_button = next_page("//a[@id='tbl_next']")
+			has_next_page,next_button = next_page('tbl_next')
 			if(has_next_page):
 				next_button.click()
 			else:
@@ -232,17 +246,20 @@ def get_accounts_no_owner():
 
 
 def init_driver():
+        global driver
         PATH = config["common"]["path"]
         config_driver = config["driver"]
+        print(config_driver)
         options = Options()
         for option in config_driver["options"]:
                 options.add_argument(option)
         if(config_driver["browser"] == "Chrome"):
+                print("TRUE")
                 driver = webdriver.Chrome(config_driver["path"], options=options)
         driver.maximize_window()
         driver.set_window_position(0,0)
         driver.set_window_size(1920, 1080)
-        return driver
+
 
 def close_driver():
 	print_mod("Closing Driver... ", end='')
@@ -256,7 +273,7 @@ def close_driver():
 
 def is_logged_in():
 	try:
-		driver.find_element(By.XPATH, "//input[@id='loginForm:agentCommandButton']")
+		driver.find_element(By.ID, 'loginForm:agentCommandButton')
 		return False;
 	except NoSuchElementException:
 		return True;
@@ -272,9 +289,9 @@ def login():
 			return True
 		get_page(base_url, False)
 		#Email, password and submit
-		driver.find_element(By.XPATH,"//input[@id='loginForm:email']").send_keys(email)
-		driver.find_element(By.XPATH, "//input[@id='loginForm:password']").send_keys(password)
-		driver.find_element(By.XPATH, "//input[@id='loginForm:agentCommandButton']").click()
+		driver.find_element(By.ID,'loginForm:email').send_keys(email)
+		driver.find_element(By.ID,'loginForm:password').send_keys(password)
+		driver.find_element(By.ID,'loginForm:agentCommandButton').click()
 		time.sleep(4)
 		try:
 			warning = driver.find_element(By.XPATH, "//div[@class='notification notification--warning notification--login']").find_element(By.TAG_NAME, 'p')
@@ -298,16 +315,16 @@ def logout():
 	if not is_logged_in():
 		print_mod("Not logged in")
 		return
-	logout_xpath = "//a[@id='j_idt28:j_idt32']"
+	logout_xpath = 'j_idt28:j_idt32'
 	try:
-		driver.find_element(By.XPATH, logout_xpath).click()
+		driver.find_element(By.ID, logout_xpath).click()
 		print_mod("SUCCESS")
 	except:
 		print_mod("Couldn't find logout button. Reloading page... ")
 		get_page(base_url + "manager-area/home.xhtml", False)
 		wait = WebDriverWait(driver, 100)
-		wait.until(EC.presence_of_element_located((By.XPATH, logout_xpath)))
-		driver.find_element(By.XPATH, logout_xpath).click()
+		wait.until(EC.presence_of_element_located((By.ID, logout_xpath)))
+		driver.find_element(By.ID, logout_xpath).click()
 		print_mod("SUCCESS")
 
 def get_customers():
@@ -318,10 +335,10 @@ def get_customers():
 		url = base_url + "manager-area/manage-customers.xhtml"
 		get_page(url, False)
 		wait = WebDriverWait(driver, 100)
-		table_xpath = "//table[@id='table']"
+		table_xpath = 'table'
 		while True:
-			wait.until(EC.presence_of_element_located((By.XPATH, table_xpath)))
-			table = driver.find_element(By.XPATH, table_xpath)
+			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
+			table = driver.find_element(By.ID, table_xpath)
 			rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
 			headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
 			for row in rows:
@@ -333,16 +350,19 @@ def get_customers():
 				customer['Id'] = spotbanc.get_customer_id_from_code(customer['Code'])
 				customer['Last entry'] = datetime.today().strftime("%Y-%m-%d")
 				customers[customer['Code']] = customer
+				#TODO REMOVE
+				if(len(customers) > 5):
+					break
 				if(customer["Status"] == 'SUSPENDED'):
 					suspended.append(customer['Code'])
 			#Get next button
-			has_next_page, next_button = next_page("//a[@id='table_next']")
+			has_next_page, next_button = next_page('table_next')
 			if(has_next_page):
 				print_mod("Going to next page")
 				next_button.click()
 			else:
 				#Unsuspend accounts
-				searchbox = driver.find_element(By.XPATH, "//input[@id='searchbox']")
+				"""searchbox = driver.find_element(By.XPATH, "//input[@id='searchbox']")
 				for code in suspended:
 					searchbox.clear()
 					searchbox.send_keys(code)
@@ -353,9 +373,11 @@ def get_customers():
 						unsuspend_btn = row.find_elements(By.TAG_NAME, 'td')[8].find_element(By.TAG_NAME, 'a')
 						unsuspend_btn.click()
 						time.sleep(2)
-						driver.send_keys(Keys.ENTER)
+						driver.send_keys(Keys.ENTER)"""
 				break
-		progress["get_customers"] = True
+		with open("config.json", 'w') as f:
+			config["progress"]["get_customers"] = True
+			json.dump(config, f, indent=4)
 	except Exception as e:
 		print_mod(traceback.format_exc())
 	finally:
@@ -367,7 +389,7 @@ def get_suspended_accounts():
 	mydb, cursor = connect_to_db()
 	cursor.execute(query)
 	suspended = cursor.fetchall()
-	
+
 
 
 def get_customer_accounts(code):
@@ -377,14 +399,14 @@ def get_customer_accounts(code):
 	accounts = []
 	wait = WebDriverWait(driver, 50)
 	try:
-		table_xpath = "//table[@id='acct-table']"
+		table_xpath = 'acct-table'
 		print_mod("Waiting for Table")
 		try:
-			wait.until(EC.presence_of_element_located((By.XPATH, table_xpath)))
+			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 		except:
 			get_page(url, False)
-			wait.until(EC.presence_of_element_located((By.XPATH, table_xpath)))
-		customer_details = driver.find_element(By.XPATH, "//div[@id='transaction4']")
+			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
+		customer_details = driver.find_element(By.ID, 'transaction4')
 		labels = customer_details.find_elements(By.TAG_NAME,'label')
 		inputs = customer_details.find_elements(By.TAG_NAME, 'input')
 		for i in range(len(labels)):
@@ -413,7 +435,7 @@ def get_customer_accounts(code):
 			else:
 				customer[label] = input
 
-		table = driver.find_element(By.XPATH, table_xpath)
+		table = driver.find_element(By.ID, table_xpath)
 		tbody = table.find_element(By.TAG_NAME, 'tbody')
 		thead = table.find_element(By.TAG_NAME, 'thead')
 		#Each account
@@ -445,7 +467,7 @@ def get_all_accounts():
 	driver.find_element(By.XPATH, "/html/body/div[1]/div[4]/form[2]/div[2]/div/input").click()
 	time.sleep(5)
 	while True:
-		table = driver.find_element(By.XPATH, "//table[@id='tbl']")
+		table = driver.find_element(By.ID, 'tbl')
 		thead = table.find_element(By.TAG_NAME, 'thead')
 		tbody = table.find_element(By.TAG_NAME, 'tbody')
 		headers = thead.find_elements(By.TAG_NAME, 'th')
@@ -460,7 +482,7 @@ def get_all_accounts():
 				account[headers[i].text] = r.text
 			accounts.append(account)
 		#Get Next Button
-		has_next_page, next_button = next_page("//a[@id='tbl_next']")
+		has_next_page, next_button = next_page('tbl_next')
 		if(has_next_page):
 			print_mod("Clicking next page")
 			next_button.click()
@@ -472,7 +494,7 @@ def get_all_accounts():
 
 #Check if next button on page.
 def next_page(button_xpath):
-	next_button = driver.find_element(By.XPATH, button_xpath)
+	next_button = driver.find_element(By.ID, button_xpath)
 	if("disabled" in next_button.get_attribute("class")):
 		return False, None
 	else:
@@ -484,7 +506,7 @@ def get_all_customers_accounts():
 	with open('customers.json', 'r') as f:
 		c = json.load(f)
 	keys_list = list(c)
-	progress_start = progress["get_accounts"]
+	progress_start = config["progress"]["get_accounts"]
 	for i in range(progress_start, len(c)):
 		code = keys_list[i]
 		customer = c[code]
@@ -499,17 +521,19 @@ def get_all_customers_accounts():
 		mydb.commit()
 		disconnect_from_db(mydb, cursor)
 		#Start with the one above this one
-		progress["get_accounts"] = i+1
+		with open("config.json", 'w') as f:
+			config["progress"]["get_accounts"] += 1
+			json.dump(config, f, indent=4)
 
 def get_all_transactions():
 	mydb,cursor = connect_to_db()
 	cursor.execute("SELECT customer_code FROM customer")
 	customers = cursor.fetchall()
 	get_page(base_url + "manager-area/wallet_statement_manager.xhtml?search-type=REGISTERED_CUSTOMER", True)
-	transactions_start = progress["get_transactions"]
+	transactions_start = config["progress"]["get_transactions"]
 	for i in range(transactions_start, len(customers)):
 		code = customers[i][0]
-		print_mod("Getting customer transactions (" + code)
+		print_mod(str(i) + "/" + str(len(customers)) + ") Getting customer transactions (" + code)
 		query = "SELECT customer_id, customer_code, status FROM customer WHERE customer_code='%s'" % (code)
 		cursor.execute(query)
 		customer_id = cursor.fetchone()
@@ -519,16 +543,58 @@ def get_all_transactions():
 			for transaction in c:
 				add_transaction_to_db(transaction, cursor)
 				mydb.commit()
-		progress["get_transactions"] = i+1
+		with open("config.json", "w") as f:
+			config["progress"]["get_transactions"] = i+1
+			json.dump(config, f, indent=4)
 	print_mod(cursor.rowcount, " record inserted")
 	disconnect_from_db(mydb, cursor)
 
 
-driver = init_driver()
+def run_get_customers():
+	get_progress()
+	init_environment()
+	init_driver()
+	try:
+		if not login():
+			raise ValueError("Failed to Login in")
+
+		print_mod("Getting Customers")
+		#Only run if set to false
+		if not config["progress"]["get_customers"]:
+			get_customers()
+		print_mod("Getting Customers with accounts")
+		get_all_customers_accounts()
+
+	except Exception:
+		print_mod(traceback.format_exc())
+	finally:
+		logout()
+		close_driver()
+
+
+def run_get_transactions():
+        get_progress()
+        init_environment()
+        init_driver()
+        try:
+                if not login():
+                        raise ValueError("Failed to Login in")
+
+                print_mod("Getting transactions")
+                get_all_transactions()
+
+        except Exception:
+                print_mod(traceback.format_exc())
+        finally:
+                logout()
+                close_driver()
+
+
+
+"""
 try:
 	if not login():
 		raise ValueError("Failed to Login in")
-	
 
 	print_mod("Getting Customers")
 	#Only run if set to false
@@ -545,6 +611,6 @@ except Exception:
 finally:
 	with open("progress.json", 'w') as f:
 		json.dump(progress, f)
-        logout()
-        close_driver()
-
+	logout()
+	close_driver()
+"""
