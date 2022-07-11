@@ -349,9 +349,7 @@ def get_customers():
 				customer['Id'] = spotbanc.get_customer_id_from_code(customer['Code'])
 				customer['Last entry'] = datetime.today().strftime("%Y-%m-%d")
 				customers[customer['Code']] = customer
-				#TODO REMOVE
-				if(len(customers) > 5):
-					break
+
 				if(customer["Status"] == 'SUSPENDED'):
 					suspended.append(customer['Code'])
 			#Get next button
@@ -554,8 +552,8 @@ def run_get_customers():
 	init_environment()
 	init_driver()
 	try:
-		#if not login():
-		#	raise ValueError("Failed to Login in")
+		if not login():
+			raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
@@ -567,7 +565,7 @@ def run_get_customers():
 	except Exception:
 		print_mod(traceback.format_exc())
 	finally:
-		#logout()
+		logout()
 		close_driver()
 
 
@@ -575,8 +573,8 @@ def run_get_transactions():
         init_environment()
         init_driver()
         try:
-                #if not login():
-                #        raise ValueError("Failed to Login in")
+                if not login():
+                        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_all_transactions()
@@ -584,7 +582,7 @@ def run_get_transactions():
         except Exception:
                 print_mod(traceback.format_exc())
         finally:
-                #logout()
+                logout()
                 close_driver()
 
 
