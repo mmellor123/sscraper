@@ -150,6 +150,7 @@ def get_account_ledger(customer_id, customer_code):
 		Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 		driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
 		table_id = 'tbl'
+		time.sleep(3)
 		wait.until(EC.presence_of_element_located((By.ID, table_id)))
 		while True:
 			table = driver.find_element(By.ID, table_id)
