@@ -177,13 +177,97 @@ def get_account_ledger(customer_id, customer_code):
 				break
 	return transactions
 
-def add_transaction_to_db(transaction, cursor):
+def get_transactions():
+	mydb, cursor = connect_to_db()
+	cursor.execute("DELETE FROM transaction_tmp")
+	mydb.commit()
+	disconnect_from_db(mydb, cursor)
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
+	wait = WebDriverWait(driver, 60)
+	try:
+		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
+	except:
+		print_mod("Page not loading. Returning")
+		return transactions
+	start = driver.find_element(By.ID, 'j_idt62:fromDate_input')
+	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
+	end.clear()
+	start.clear()
+	start.send_keys("23/05/2020")
+	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
+	customers = driver.find_element(By.ID, 'j_idt62:customer_search').find_elements(By.TAG_NAME, 'option')
+	for i, customer in enumerate(customers):
+		transactions = []
+		print(str(i) + "/" + str(len(customers)) + " customers")
+		customer_id = customer.get_attribute("value")
+		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
+		accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
+		account_numbers = {}
+		for account in accounts:
+			account_number = account.text.replace('[', '').replace(']','').split()
+			account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3]
+		for account_number in account_numbers:
+			print("Account Number " + str(account_number))
+			Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
+			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
+			table_id = 'tbl'
+			time.sleep(3)
+			wait.until(EC.presence_of_element_located((By.ID, table_id)))
+			while True:
+				table = driver.find_element(By.ID, table_id)
+				headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
+				rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
+				for row in rows:
+					transaction = {"Last entry": datetime.today().strftime("%Y-%m-%d")}
+					data = row.find_elements(By.TAG_NAME, 'td')
+					#No transactions on this page
+					if(len(data) == 1):
+						break
+					for i, header in enumerate(headers):
+						transaction[header.text] = data[i].text
+					transaction["Account Code"] = account_numbers[account_number]
+					transaction["Customer Code"] = customer_id
+					transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
+					transactions.append(transaction)
+				#Go to next page
+				has_next_page,next_button = next_page('tbl_next')
+				if(has_next_page):
+					next_button.click()
+				else:
+					print_mod("No next page")
+					break
+		mydb, cursor = connect_to_db()
+		for transaction in transactions:
+			print(transaction)
+			add_transaction_to_db(transaction, cursor, "transaction_tmp")
+			mydb.commit()
+		disconnect_from_db(mydb, cursor)
+	merge_accounts_and_transactions()
+
+def merge_accounts_and_transactions():
+	mydb, cursor = connect_to_db()
+	cursor.execute("SELECT customer_code, customer_id FROM customer")
+	customers = cursor.fetchall()
+	for customer in customers:
+		print(customer)
+		query = "UPDATE transaction_tmp set account_code=concat(account_code,%s) WHERE customer_code=%s"
+		values = [customer[0], customer[1]]
+		cursor.execute(query,values)
+	mydb.commit()
+	disconnect_from_db(mydb, cursor)
+					
+		
+		
+
+	
+
+def add_transaction_to_db(transaction, cursor, table):
 	amount = transaction["Amount"].split()
 	amount[0] = amount[0].replace(',','')
 	balance = transaction["Balance"].split(' ')
 	balance[0] = balance[0].replace(',','')
-	add_transaction_query = "INSERT INTO transaction (ref, account_code, counter_party, date, amount, cr_or_dr, balance, currency, more_info, fund_depositor, payment_reference, last_entry) VALUES (%s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-	values = [transaction["REF#"], transaction["Account Code"], transaction["Counter Party"], transaction["Date"], amount[0], amount[1],  balance[0], balance[1], transaction["More Info"], transaction["Fund Depositor"], transaction["Payment Reference"], transaction["Last entry"]]
+	add_transaction_query = "INSERT INTO " + table + " (ref, customer_code, account_code, counter_party, date, amount, cr_or_dr, balance, currency, more_info, fund_depositor, payment_reference, last_entry) VALUES (%s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+	values = [transaction["REF#"], transaction["Customer Code"], transaction["Account Code"], transaction["Counter Party"], transaction["Date"], amount[0], amount[1],  balance[0], balance[1], transaction["More Info"], transaction["Fund Depositor"], transaction["Payment Reference"], transaction["Last entry"]]
 	try:
 		cursor.execute(add_transaction_query, values)
 	except Exception as e:
@@ -539,7 +623,7 @@ def get_all_transactions():
 			c = get_account_ledger(customer_id[0], customer_id[1])
 			cursor.execute("DELETE FROM transaction WHERE account_code IN (SELECT account_code FROM account WHERE customer_code='%s')" % (code))
 			for transaction in c:
-				add_transaction_to_db(transaction, cursor)
+				add_transaction_to_db(transaction, cursor, "transaction")
 				mydb.commit()
 		with open("config.json", "w") as f:
 			config["progress"]["get_transactions"] = i+1
@@ -553,8 +637,8 @@ def run_get_customers():
 	init_environment()
 	init_driver()
 	try:
-		if not login():
-			raise ValueError("Failed to Login in")
+		#if not login():
+		#	raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
@@ -566,7 +650,7 @@ def run_get_customers():
 	except Exception:
 		print_mod(traceback.format_exc())
 	finally:
-		logout()
+		#logout()
 		close_driver()
 
 
@@ -574,16 +658,16 @@ def run_get_transactions():
         init_environment()
         init_driver()
         try:
-                if not login():
-                        raise ValueError("Failed to Login in")
+                #if not login():
+                #        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
-                get_all_transactions()
+                get_transactions()
 
         except Exception:
                 print_mod(traceback.format_exc())
         finally:
-                logout()
+                #logout()
                 close_driver()
 
 
