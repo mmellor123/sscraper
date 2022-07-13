@@ -1,6 +1,7 @@
 from selenium.common.exceptions import NoSuchElementException
 import json
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.options import Options as ffOptions
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
@@ -27,8 +28,9 @@ import sys
 #4) Test progress data as script runs
 
 #Test1
+log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
-	with open("logs/functions-log", "a") as f:
+	with open(log_file, "a") as f:
 		print(text, file=f, end=end)
 	print(text, end=end)
 
@@ -188,7 +190,7 @@ def get_transactions():
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
 	except:
 		print_mod("Page not loading. Returning")
-		return transactions
+		return
 	start = driver.find_element(By.ID, 'j_idt62:fromDate_input')
 	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
 	end.clear()
@@ -196,11 +198,15 @@ def get_transactions():
 	start.send_keys("23/05/2020")
 	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
 	customers = driver.find_element(By.ID, 'j_idt62:customer_search').find_elements(By.TAG_NAME, 'option')
-	for i, customer in enumerate(customers):
+	customers_id = []
+	for c in customers:
+		customers_id.append(c.get_attribute("value"))
+	for i, customer_id in enumerate(customers_id):
 		transactions = []
 		print(str(i) + "/" + str(len(customers)) + " customers")
-		customer_id = customer.get_attribute("value")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
+		time.sleep(2)
+		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
 		accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
 		account_numbers = {}
 		for account in accounts:
@@ -238,11 +244,10 @@ def get_transactions():
 					break
 		mydb, cursor = connect_to_db()
 		for transaction in transactions:
-			print(transaction)
 			add_transaction_to_db(transaction, cursor, "transaction_tmp")
 			mydb.commit()
 		disconnect_from_db(mydb, cursor)
-	merge_accounts_and_transactions()
+	#merge_accounts_and_transactions()
 
 def merge_accounts_and_transactions():
 	mydb, cursor = connect_to_db()
@@ -329,17 +334,22 @@ def get_accounts_no_owner():
 	disconnect_from_db(mydb, cursor)
 
 
-def init_driver():
+def init_driver(browser):
         global driver
-        PATH = config["common"]["path"]
-        config_driver = config["driver"]
-        print(config_driver)
+        PATH = config["driver"]["path"]
+        config_driver = config["driver"][browser]
         options = Options()
-        for option in config_driver["options"]:
+        print(PATH + "chromedriver")
+        if(browser == "Chrome"):
+                options = Options()
+        elif(browser == "Firefox"):
+	        options = ffOptions()
+        for option in config_driver:
                 options.add_argument(option)
-        if(config_driver["browser"] == "Chrome"):
-                print("TRUE")
-                driver = webdriver.Chrome(config_driver["path"], options=options)
+        if(browser == "Chrome"):
+                driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+        elif (browser == "Firefox"):
+                driver = webdriver.Firefox(options=options)
         driver.maximize_window()
         driver.set_window_position(0,0)
         driver.set_window_size(1920, 1080)
@@ -608,6 +618,7 @@ def get_all_customers_accounts():
 			json.dump(config, f, indent=4)
 
 def get_all_transactions():
+	log_file = "get-transactions.log"
 	mydb,cursor = connect_to_db()
 	cursor.execute("SELECT customer_code FROM customer")
 	customers = cursor.fetchall()
@@ -635,10 +646,10 @@ def get_all_transactions():
 def run_get_customers():
 	get_progress()
 	init_environment()
-	init_driver()
+	init_driver("Chrome")
 	try:
-		#if not login():
-		#	raise ValueError("Failed to Login in")
+		if not login():
+			raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
@@ -648,26 +659,27 @@ def run_get_customers():
 		get_all_customers_accounts()
 
 	except Exception:
-		print_mod(traceback.format_exc())
+		print_mod(str(traceback.format_exc()))
 	finally:
-		#logout()
+		logout()
 		close_driver()
 
 
 def run_get_transactions():
+        log_file = "logs/get-transactions.log"
         init_environment()
-        init_driver()
+        init_driver("Firefox")
         try:
-                #if not login():
-                #        raise ValueError("Failed to Login in")
+                if not login():
+                        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_transactions()
 
         except Exception:
-                print_mod(traceback.format_exc())
+                print_mod(str(traceback.format_exc()))
         finally:
-                #logout()
+                logout()
                 close_driver()
 
 
