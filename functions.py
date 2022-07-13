@@ -66,22 +66,24 @@ with open("config.json", 'r') as f:
 	config=json.load(f)
 global config_common
 config_common=config['common']
+global config_env
+config_env = config["environment"]["staging"]
 
 def init_environment():
 	global base_url
 	print_mod("-----------------------------------------")
 	print_mod(datetime.today())
 	#Production/Staging?
-	base_url = config_common["staging_url"]
 	print_mod("Running on STAGING ENVIRONEMNT as default... ")
 	if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
 		print_mod("Running on PRODUCTION ENVIRONMENT")
-		base_url = config_common["production_url"]
+		config_env = config["environment"]["production"]
+	base_url = config_env["url"]
 	global spotbanc
-	spotbanc = spotbanc_api(base_url + config_common['api'], '200', 'app')
+	spotbanc = spotbanc_api(base_url + config_env['api'], '200', 'app')
 
 def connect_to_db():
-        db_config = config["database"]
+        db_config = config_env["database"]
         host = db_config["host"]
         user = db_config["user"]
         password = db_config["password"]
