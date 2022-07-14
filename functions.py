@@ -66,11 +66,11 @@ with open("config.json", 'r') as f:
 	config=json.load(f)
 global config_common
 config_common=config['common']
-global config_env
-config_env = config["environment"]["staging"]
 
 def init_environment():
 	global base_url
+	global config_env
+	config_env = config["environment"]["staging"]
 	print_mod("-----------------------------------------")
 	print_mod(datetime.today())
 	#Production/Staging?
@@ -646,8 +646,8 @@ def get_all_transactions():
 
 
 def run_get_customers():
-	get_progress()
 	init_environment()
+	get_progress()
 	init_driver("Chrome")
 	try:
 		if not login():
