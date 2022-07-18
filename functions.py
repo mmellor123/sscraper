@@ -220,7 +220,8 @@ def get_transactions():
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
 			table_id = 'tbl'
 			time.sleep(3)
-			wait.until(EC.presence_of_element_located((By.ID, table_id)))
+			#Wait for next button to appear
+			wait.until(EC.presence_of_element_located((By.ID, 'tbl_next')))
 			while True:
 				table = driver.find_element(By.ID, table_id)
 				headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
