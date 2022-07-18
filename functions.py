@@ -22,12 +22,9 @@ import getpass
 import sys
 
 #TODO
-#1) Test get_transactions and get_customers
-#2) Use testing database
 #3) Cross check customer details
 #4) Test progress data as script runs
 
-#Test1
 log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
 	with open(log_file, "a") as f:
@@ -204,6 +201,9 @@ def get_transactions():
 	for c in customers:
 		customers_id.append(c.get_attribute("value"))
 	for i, customer_id in enumerate(customers_id):
+		#TODO remove this
+		if(i > 3):
+			break
 		transactions = []
 		print(str(i) + "/" + str(len(customers)) + " customers")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
@@ -218,8 +218,12 @@ def get_transactions():
 			print("Account Number " + str(account_number))
 			Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
+			#Special case for customer Smile Money Limited
+			if(customer_id="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+				time.sleep(60)
+			else:
+				time.sleep(3)
 			table_id = 'tbl'
-			time.sleep(3)
 			#Wait for next button to appear
 			wait.until(EC.presence_of_element_located((By.ID, 'tbl_next')))
 			while True:
