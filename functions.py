@@ -178,6 +178,10 @@ def get_account_ledger(customer_id, customer_code):
 				break
 	return transactions
 
+def sleep(n):
+	for i in range(n):
+		time.sleep(1)
+
 def get_transactions():
 	mydb, cursor = connect_to_db()
 	cursor.execute("DELETE FROM transaction_tmp")
@@ -217,9 +221,9 @@ def get_transactions():
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
 			#Special case for customer Smile Money Limited
 			if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
-				time.sleep(60)
+				sleep(60*5)
 			else:
-				time.sleep(3)
+				sleep(3)
 			table_id = 'tbl'
 			#Wait for next button to appear
 			wait.until(EC.presence_of_element_located((By.ID, 'tbl_next')))
