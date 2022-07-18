@@ -201,9 +201,6 @@ def get_transactions():
 	for c in customers:
 		customers_id.append(c.get_attribute("value"))
 	for i, customer_id in enumerate(customers_id):
-		#TODO remove this
-		if(i > 3):
-			break
 		transactions = []
 		print(str(i) + "/" + str(len(customers)) + " customers")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
@@ -219,7 +216,7 @@ def get_transactions():
 			Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
 			#Special case for customer Smile Money Limited
-			if(customer_id="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+			if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
 				time.sleep(60)
 			else:
 				time.sleep(3)
