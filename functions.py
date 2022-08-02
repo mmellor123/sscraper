@@ -52,6 +52,7 @@ def get_progress():
                         json.dump(config, f, indent=4)
                 #Clear database before starting
                 mydb, cursor = connect_to_db()
+                clear_table("suspended_jscript", cursor)
                 clear_table("transaction", cursor)
                 clear_table("account", cursor)
                 clear_table("customer", cursor)
@@ -292,7 +293,7 @@ def add_account_to_db(account):
 
 
 def add_customer_to_db(customer, cursor):
-	add_customer_query = "INSERT INTO customer (customer_id, full_name,status, last_login, customer_code, first_name, last_name, email, phone_number, account_type, dob, address_line1, address_line2, city, state, postcode, employer, annual_salary, currency_salary, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE customer_code=%s"
+	add_customer_query = "REPLACE INTO customer (customer_id, full_name,status, last_login, customer_code, first_name, last_name, email, phone_number, account_type, dob, address_line1, address_line2, city, state, postcode, employer, annual_salary, currency_salary, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 	add_account_query = """INSERT INTO account (account_code, date, currency, balance, status, account_name, account_number, customer_code, last_entry) VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE account_code=%s"""
 	delete_accounts_query = "DELETE FROM account WHERE customer_code='%s'" % (customer['Code'])
 	try:
@@ -303,11 +304,11 @@ def add_customer_to_db(customer, cursor):
 	try:
 		dob = datetime.strptime(dob, "%d/%m/%Y").strftime("%Y-%m-%d")
 	except:
-		print("FAILED")
+		dob="0000-00-00"
 		pass
 	try:
 		values = [customer['Id'], customer['Full Name'], customer['Status'], customer['Last Login'], customer['Code'], customer['First Name'], customer['Last Name'], customer['Sender Email address'], customer['Phone Number'], customer['Account Type'], dob, customer['Address Line 1'], customer['Address Line 2'],
-customer['City'], customer['State'], customer['Area/Post code'], customer['Employer'], customer['Annual Salary'], customer['Currency Salary'], customer['Last entry'], customer['Code']]
+customer['City'], customer['State'], customer['Area/Post code'], customer['Employer'], customer['Annual Salary'], customer['Currency Salary'], customer['Last entry']]
 	except Exception as e:
 		print(e)
 		print_mod("Couldn't add customer to DB")
@@ -429,6 +430,52 @@ def logout():
 		driver.find_element(By.ID, logout_xpath).click()
 		print_mod("SUCCESS")
 
+
+def get_suspend_javascript(element):
+		jscript = element.get_attribute('onclick')
+		jscript = jscript.split(',')
+		j_exec = jscript[3][1::] + ',' + jscript[4] + ',\'\');'
+		j_exec = j_exec.replace("\\", '')
+		return j_exec
+	
+def add_customer_code_to_db(customer, cursor):
+	data = [customer['Id'], customer['Code'], customer['Last Login'], customer['Full Name'], customer['Sender Phone'], customer['Status'], customer['Last entry'], customer['Code']]
+	cursor.execute("INSERT INTO customer (customer_id, customer_code, last_login, full_name, phone_number, status, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE customer_code=%s", data)
+
+
+def suspend_customers(action="SUSPEND"):
+	mydb, cursor = connect_to_db()
+	cursor.execute("SELECT customer_code, script FROM suspended_jscript")
+	customers = cursor.fetchall()
+	get_page(base_url + "manager-area/manage-customers."+config_common["extension"], False)
+	for customer in customers:
+		script = customer[1]
+		if(action == "SUSPEND"):
+			script = customer[1].replace('j_idt97\'', 'j_idt95\'')
+		driver.execute_script(script)
+		time.sleep(3)
+	disconnect_from_db(mydb, cursor)
+		
+
+def get_suspended_customer_transactions():
+	#Unsuspend
+	suspend_customers(action="UNSUSPEND")
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
+	mydb, cursor = connect_to_db()
+	cursor.execute("SELECT customer_id, customer_code FROM customer WHERE status='SUSPENDED'")
+	customers = cursor.fetchall()
+	for customer in customers:
+		print("CUSTOMER: " + customer[1])
+		transactions = get_account_ledger(customer[0],customer[1])
+		for transaction in transactions:
+			print(transaction)
+			add_transaction_to_db(transaction, cursor, "transaction_tmp")
+			mydb.commit()
+	time.sleep(2)
+	disconnect_from_db(mydb, cursor)
+	#Suspend again
+	suspend_customers()
+	
 def get_customers():
 	print_mod("Getting Customers... ", end='')
 	customers = {}
@@ -438,6 +485,7 @@ def get_customers():
 		get_page(url, False)
 		wait = WebDriverWait(driver, 100)
 		table_xpath = 'table'
+		mydb, cursor = connect_to_db()
 		while True:
 			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 			table = driver.find_element(By.ID, table_xpath)
@@ -449,32 +497,32 @@ def get_customers():
 				row = row_all[0:7]
 				for i, r in enumerate(row):
 					customer[headers[i].text]=r.text
-				customer['Id'] = spotbanc.get_customer_id_from_code(customer['Code'])
+				cursor.execute("SELECT customer_id FROM customer_code_to_id WHERE customer_code=%s", [customer['Code']])
+				result = cursor.fetchall()
+				if not len(result):
+					customer['Id'] = spotbanc.get_customer_id_from_code(customer['Code'])
+					cursor.execute("INSERT INTO customer_code_to_id (customer_code, customer_id) VALUES (%s, %s)", [customer['Code'], customer['Id']])
+					mydb.commit()
+				else:
+					customer['Id'] = result[0][0]
 				customer['Last entry'] = datetime.today().strftime("%Y-%m-%d")
 				customers[customer['Code']] = customer
-
+				
+				add_customer_code_to_db(customer, cursor)
+				mydb.commit()
 				if(customer["Status"] == 'SUSPENDED'):
-					suspended.append(customer['Code'])
+					suspend_script = get_suspend_javascript(row_all[8].find_element(By.TAG_NAME, 'a'))
+					cursor.execute("INSERT INTO suspended_jscript (customer_code, script) VALUES (%s, %s)",[customer['Code'], suspend_script])
+					mydb.commit()
+					suspended.append(suspend_script)			
 			#Get next button
 			has_next_page, next_button = next_page('table_next')
 			if(has_next_page):
 				print_mod("Going to next page")
 				next_button.click()
 			else:
-				#Unsuspend accounts
-				"""searchbox = driver.find_element(By.XPATH, "//input[@id='searchbox']")
-				for code in suspended:
-					searchbox.clear()
-					searchbox.send_keys(code)
-					wait.until(EC.presence_of_element_located((By.XPATH, table_xpath)))
-					table = driver.find_element(By.XPATH, table_xpath)
-					rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
-					for row in rows:
-						unsuspend_btn = row.find_elements(By.TAG_NAME, 'td')[8].find_element(By.TAG_NAME, 'a')
-						unsuspend_btn.click()
-						time.sleep(2)
-						driver.send_keys(Keys.ENTER)"""
 				break
+		disconnect_from_db(mydb, cursor)
 		with open("config.json", 'w') as f:
 			config["progress"]["get_customers"] = True
 			json.dump(config, f, indent=4)
@@ -601,21 +649,27 @@ def next_page(button_xpath):
 		return True, next_button
 
 #Runs get_customer_accounts() for every customer
+#TODO validate customers are being updated correctly
 def get_all_customers_accounts():
 	headers = ["Date", "Balance", "Account Name", "Account Number", "Status", "Customer Code"]
+	mydb, cursor = connect_to_db()
+	cursor.execute("SELECT customer_code, last_login, full_name, phone_number, status, customer_id, last_entry FROM customer")
+	customers = cursor.fetchall()
+	
 	with open('customers.json', 'r') as f:
 		c = json.load(f)
 	keys_list = list(c)
 	progress_start = config["progress"]["get_accounts"]
-	for i in range(progress_start, len(c)):
-		code = keys_list[i]
-		customer = c[code]
+	for i in range(progress_start, len(customers)):
+		c = customers[i]
+		customer = {"Code" : c[0], "Last Login": c[1], "Full Name": c[2], "Sender Phone": c[3], "Status" : c[4], "Id": c[5], "Last entry": c[6]}
+		print(customer)
+		#customer = c[code]
 		print_mod(str(i) + ") ",end='')
-		print_mod("Getting accounts of " + code)
-		customer_account = get_customer_accounts(code)
+		print_mod("Getting accounts of " + customer["Code"])
+		customer_account = get_customer_accounts(customer['Code'])
 		for detail in customer_account:
 			customer[detail] = customer_account[detail]
-		customer["Code"] = code
 		mydb,cursor = connect_to_db()
 		add_customer_to_db(customer, cursor)
 		mydb.commit()
@@ -664,6 +718,7 @@ def run_get_customers():
 		if not config["progress"]["get_customers"]:
 			get_customers()
 		print_mod("Getting Customers with accounts")
+		#TODO Add back get accounts
 		get_all_customers_accounts()
 
 	except Exception:
@@ -676,13 +731,15 @@ def run_get_customers():
 def run_get_transactions():
         log_file = "logs/get-transactions.log"
         init_environment()
-        init_driver("Firefox")
+        init_driver("Chrome")
         try:
                 if not login():
                         raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_transactions()
+		#Unsuspends, gets transactions and then suspends again
+                get_suspended_customer_transactions()
 
         except Exception:
                 print_mod(str(traceback.format_exc()))
@@ -690,28 +747,3 @@ def run_get_transactions():
                 logout()
                 close_driver()
 
-
-
-"""
-try:
-	if not login():
-		raise ValueError("Failed to Login in")
-
-	print_mod("Getting Customers")
-	#Only run if set to false
-	if not progress["get_customers"]:
-		get_customers()
-	print_mod("Getting Customers with accounts")
-	get_all_customers_accounts()
-	print_mod("Added customers to database")
-	print_mod("Getting customer transactions")
-	get_all_transactions()
-
-except Exception:
-	print_mod(traceback.format_exc())
-finally:
-	with open("progress.json", 'w') as f:
-		json.dump(progress, f)
-	logout()
-	close_driver()
-"""
