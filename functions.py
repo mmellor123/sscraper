@@ -147,7 +147,8 @@ def get_account_ledger(customer_id, customer_code):
 	account_numbers = {}
 	for account in accounts:
 		account_number = account.text.replace('[', '').replace(']','').split()
-		account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3] + customer_code
+		#TODO removed customer_code from account_numbers. Account code = Account Number + Currency
+		account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3]
 	for account_number in account_numbers:
 		Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 		driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
@@ -167,7 +168,7 @@ def get_account_ledger(customer_id, customer_code):
 				for i, header in enumerate(headers):
 					transaction[header.text] = data[i].text
 				transaction["Account Code"] = account_numbers[account_number]
-				transaction["Customer Code"] = customer_code
+				transaction["Customer Code"] = customer_id
 				transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
 				transactions.append(transaction)
 			#Go to next page
@@ -256,7 +257,6 @@ def get_transactions():
 			add_transaction_to_db(transaction, cursor, "transaction_tmp")
 			mydb.commit()
 		disconnect_from_db(mydb, cursor)
-	#merge_accounts_and_transactions()
 
 def merge_accounts_and_transactions():
 	mydb, cursor = connect_to_db()
@@ -731,7 +731,7 @@ def run_get_customers():
 def run_get_transactions():
         log_file = "logs/get-transactions.log"
         init_environment()
-        init_driver("Chrome")
+        init_driver("Firefox")
         try:
                 if not login():
                         raise ValueError("Failed to Login in")
@@ -740,6 +740,8 @@ def run_get_transactions():
                 get_transactions()
 		#Unsuspends, gets transactions and then suspends again
                 get_suspended_customer_transactions()
+		#TODO check that account codes are correctly generated
+		#merge_accounts_and_transactions()
 
         except Exception:
                 print_mod(str(traceback.format_exc()))
