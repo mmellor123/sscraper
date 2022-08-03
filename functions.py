@@ -28,6 +28,7 @@ import sys
 global log_file
 log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
+	global log_file
 	with open(log_file, "a") as f:
 		print(text, file=f, end=end)
 	print(text, end=end)
@@ -729,6 +730,7 @@ def run_get_customers():
 
 
 def run_get_transactions():
+        global log_file
         log_file = "logs/get-transactions.log"
         init_environment()
         init_driver("Firefox")
