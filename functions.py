@@ -20,6 +20,7 @@ import os
 from spotbanc_api import spotbanc_api
 import getpass
 import sys
+import re
 
 #TODO
 #3) Cross check customer details
@@ -457,7 +458,6 @@ def suspend_customers(action="SUSPEND"):
 		driver.execute_script(script)
 		time.sleep(3)
 	disconnect_from_db(mydb, cursor)
-		
 
 def get_suspended_customer_transactions():
 	#Unsuspend
@@ -477,7 +477,7 @@ def get_suspended_customer_transactions():
 	disconnect_from_db(mydb, cursor)
 	#Suspend again
 	suspend_customers()
-	
+
 def get_customers():
 	print_mod("Getting Customers... ", end='')
 	customers = {}
@@ -509,14 +509,14 @@ def get_customers():
 					customer['Id'] = result[0][0]
 				customer['Last entry'] = datetime.today().strftime("%Y-%m-%d")
 				customers[customer['Code']] = customer
-				
+
 				add_customer_code_to_db(customer, cursor)
 				mydb.commit()
 				if(customer["Status"] == 'SUSPENDED'):
 					suspend_script = get_suspend_javascript(row_all[8].find_element(By.TAG_NAME, 'a'))
 					cursor.execute("INSERT INTO suspended_jscript (customer_code, script) VALUES (%s, %s)",[customer['Code'], suspend_script])
 					mydb.commit()
-					suspended.append(suspend_script)			
+					suspended.append(suspend_script)
 			#Get next button
 			has_next_page, next_button = next_page('table_next')
 			if(has_next_page):
@@ -563,9 +563,9 @@ def get_customer_accounts(code):
 			label = labels[i].text
 			input = inputs[i].get_attribute('value')
 			if(label == 'Name'):
-				input = input.replace(')', '')
-				input = input.replace('(','')
-				name = input.split()
+				account_type = re.search("/((.*)/)", input)
+				name = input.replace(account_type.group(0), '')
+				name = name.split()
 				try:
 					customer['First Name'] = name[0]
 				except IndexError:
@@ -575,7 +575,7 @@ def get_customer_accounts(code):
 				except:
 					customer['Last Name'] = ''
 				try:
-					customer['Account Type'] = name[2]
+					customer['Account Type'] = account_type.group(1)
 				except IndexError:
 					#If list less than 3, check last entry to see if it is account type
 					if(name[len(name) -1] in ["INDIVIDUAL, COMPANY"]):
