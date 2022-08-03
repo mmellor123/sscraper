@@ -25,6 +25,7 @@ import sys
 #3) Cross check customer details
 #4) Test progress data as script runs
 
+global log_file
 log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
 	with open(log_file, "a") as f:
@@ -718,7 +719,6 @@ def run_get_customers():
 		if not config["progress"]["get_customers"]:
 			get_customers()
 		print_mod("Getting Customers with accounts")
-		#TODO Add back get accounts
 		get_all_customers_accounts()
 
 	except Exception:
@@ -739,9 +739,11 @@ def run_get_transactions():
                 print_mod("Getting transactions")
                 get_transactions()
 		#Unsuspends, gets transactions and then suspends again
-                get_suspended_customer_transactions()
+                #TODO disabled get_suspended_customers
+		#get_suspended_customer_transactions()
 		#TODO check that account codes are correctly generated
-		#merge_accounts_and_transactions()
+                print_mod("Updating transaction account codes...")
+                merge_accounts_and_transactions()
 
         except Exception:
                 print_mod(str(traceback.format_exc()))
