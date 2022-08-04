@@ -488,7 +488,7 @@ def get_customers():
 		wait = WebDriverWait(driver, 100)
 		table_xpath = 'table'
 		mydb, cursor = connect_to_db()
-		while True and len(customers) < 1:
+		while True:
 			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 			table = driver.find_element(By.ID, table_xpath)
 			rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
