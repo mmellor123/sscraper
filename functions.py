@@ -488,7 +488,7 @@ def get_customers():
 		wait = WebDriverWait(driver, 100)
 		table_xpath = 'table'
 		mydb, cursor = connect_to_db()
-		while True:
+		while True and len(customers) < 1:
 			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 			table = driver.find_element(By.ID, table_xpath)
 			rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
@@ -563,7 +563,7 @@ def get_customer_accounts(code):
 			label = labels[i].text
 			input = inputs[i].get_attribute('value')
 			if(label == 'Name'):
-				account_type = re.search("/((.*)/)", input)
+				account_type = re.search("\((.*)\)", input)
 				name = input.replace(account_type.group(0), '')
 				name = name.split()
 				try:
@@ -606,6 +606,7 @@ def get_customer_accounts(code):
 	except NoSuchElementException as e:
 		return customer
 	except Exception as e:
+		print(e)
 		return customer
 
 #Get accounts from Accounting > View Customer Accounts:
