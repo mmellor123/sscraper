@@ -21,6 +21,9 @@ from spotbanc_api import spotbanc_api
 import getpass
 import sys
 import re
+import pickle
+import shutil
+from multiprocessing import Process
 
 #TODO
 #3) Cross check customer details
@@ -84,6 +87,10 @@ def init_environment():
 	spotbanc = spotbanc_api(base_url + config_env['api'], '200', 'app')
 
 def connect_to_db():
+        with open("config.json", 'r') as f:
+                config = json.load(f)
+                config_env = config["environment"]["production"]
+
         db_config = config_env["database"]
         host = db_config["host"]
         user = db_config["user"]
@@ -106,7 +113,7 @@ def disconnect_from_db(db, cursor):
 	cursor.close()
 	db.close()
 
-def get_page(url, check_current_page):
+def get_page(url, check_current_page, driver):
 	print_mod("Getting page " + url)
 	max_wait = 80
 	if(check_current_page and driver.current_url == url):
@@ -192,7 +199,7 @@ def get_transactions():
 	cursor.execute("DELETE FROM transaction_tmp")
 	mydb.commit()
 	disconnect_from_db(mydb, cursor)
-	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
 	wait = WebDriverWait(driver, 60)
 	try:
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
@@ -296,9 +303,10 @@ def add_account_to_db(account):
 
 
 def add_customer_to_db(customer, cursor):
+	cursor.execute("DELETE FROM account WHERE customer_code=%s", [customer['Code']])
+	
 	add_customer_query = "REPLACE INTO customer (customer_id, full_name,status, last_login, customer_code, first_name, last_name, email, phone_number, account_type, dob, address_line1, address_line2, city, state, postcode, employer, annual_salary, currency_salary, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 	add_account_query = """INSERT INTO account (account_code, date, currency, balance, status, account_name, account_number, customer_code, last_entry) VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE account_code=%s"""
-	delete_accounts_query = "DELETE FROM account WHERE customer_code='%s'" % (customer['Code'])
 	try:
 		dob = customer['Date Of Birth']
 	except:
@@ -307,7 +315,7 @@ def add_customer_to_db(customer, cursor):
 	try:
 		dob = datetime.strptime(dob, "%d/%m/%Y").strftime("%Y-%m-%d")
 	except:
-		dob="0000-00-00"
+		dob=None
 		pass
 	try:
 		values = [customer['Id'], customer['Full Name'], customer['Status'], customer['Last Login'], customer['Code'], customer['First Name'], customer['Last Name'], customer['Sender Email address'], customer['Phone Number'], customer['Account Type'], dob, customer['Address Line 1'], customer['Address Line 2'],
@@ -345,9 +353,14 @@ def get_accounts_no_owner():
 		json.dump(multiple_owners, f)
 	disconnect_from_db(mydb, cursor)
 
+#TODO added function to init driver in parallel
+def init_driver_parallel(browser, index):
+	driver = init_driver(browser, index)
+	shutil.rmtree(dest + str(index)+"/Profile3")
+	print("Done")
+	shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
 
-def init_driver(browser):
-        global driver
+def init_driver(browser, index):
         PATH = config["driver"]["path"]
         config_driver = config["driver"][browser]
         options = Options()
@@ -359,15 +372,27 @@ def init_driver(browser):
         for option in config_driver:
                 options.add_argument(option)
         if(browser == "Chrome"):
+                dest = "/home/max/Desktop/Personal/scraperGit1/sscraper/selenium_profiles/selenium"
+	
+                user_dir = "--user-data-dir="+ dest + str(index)
+                options.add_argument(user_dir)
                 driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+                if index!=0:
+                         close_driver(driver)
+			#TODO copy profile to other directory
+			#Create directory and point to the profile
+                         shutil.rmtree(dest + str(index)+"/Profile3")
+                         shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
+                         driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
-                driver = webdriver.Firefox(options=options)
+                driver = webdriver.Firefox(options=options, firefox_profile=fp)
         driver.maximize_window()
         driver.set_window_position(0,0)
         driver.set_window_size(1920, 1080)
+        return driver
 
 
-def close_driver():
+def close_driver(driver):
 	print_mod("Closing Driver... ", end='')
 	try:
 		driver.close()
@@ -393,7 +418,7 @@ def login():
 		#Log into API first to see if credentials correct
 		if not spotbanc.is_logged_in():
 			return True
-		get_page(base_url, False)
+		get_page(base_url, False, driver)
 		#Email, password and submit
 		driver.find_element(By.ID,'loginForm:email').send_keys(email)
 		driver.find_element(By.ID,'loginForm:password').send_keys(password)
@@ -405,8 +430,10 @@ def login():
 			return False
 		except:
 			pass
-		get_page(base_url + "manager-area/home."+ config_common["extension"], False)
+		get_page(base_url + "manager-area/home."+ config_common["extension"], False, driver)
 		print_mod("Successfully Logged in")
+		#TODO added pickle
+		pickle.dump(driver.get_cookies(), open("cookies.pkl", 'wb'))
 		return True
 	except Exception as e:
 		print_mod(traceback.format_exc())
@@ -427,7 +454,7 @@ def logout():
 		print_mod("SUCCESS")
 	except:
 		print_mod("Couldn't find logout button. Reloading page... ")
-		get_page(base_url + "manager-area/home."+config_common["extension"], False)
+		get_page(base_url + "manager-area/home."+config_common["extension"], False, driver)
 		wait = WebDriverWait(driver, 100)
 		wait.until(EC.presence_of_element_located((By.ID, logout_xpath)))
 		driver.find_element(By.ID, logout_xpath).click()
@@ -450,7 +477,7 @@ def suspend_customers(action="SUSPEND"):
 	mydb, cursor = connect_to_db()
 	cursor.execute("SELECT customer_code, script FROM suspended_jscript")
 	customers = cursor.fetchall()
-	get_page(base_url + "manager-area/manage-customers."+config_common["extension"], False)
+	get_page(base_url + "manager-area/manage-customers."+config_common["extension"], False, driver)
 	for customer in customers:
 		script = customer[1]
 		if(action == "SUSPEND"):
@@ -462,7 +489,7 @@ def suspend_customers(action="SUSPEND"):
 def get_suspended_customer_transactions():
 	#Unsuspend
 	suspend_customers(action="UNSUSPEND")
-	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
 	mydb, cursor = connect_to_db()
 	cursor.execute("SELECT customer_id, customer_code FROM customer WHERE status='SUSPENDED'")
 	customers = cursor.fetchall()
@@ -484,7 +511,7 @@ def get_customers():
 	suspended = []
 	try:
 		url = base_url + "manager-area/manage-customers."+config_common["extension"]
-		get_page(url, False)
+		get_page(url, False, driver)
 		wait = WebDriverWait(driver, 100)
 		table_xpath = 'table'
 		mydb, cursor = connect_to_db()
@@ -542,9 +569,9 @@ def get_suspended_accounts():
 
 
 
-def get_customer_accounts(code):
+def get_customer_accounts(code, driver):
 	url = base_url + "manager-area/user-profile."+config_common["extension"]+"?code=" + code
-	get_page(url, False)
+	get_page(url, False, driver)
 	customer = {"accounts": []}
 	accounts = []
 	wait = WebDriverWait(driver, 50)
@@ -554,7 +581,7 @@ def get_customer_accounts(code):
 		try:
 			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 		except:
-			get_page(url, False)
+			get_page(url, False, driver)
 			wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
 		customer_details = driver.find_element(By.ID, 'transaction4')
 		labels = customer_details.find_elements(By.TAG_NAME,'label')
@@ -612,7 +639,7 @@ def get_customer_accounts(code):
 #Get accounts from Accounting > View Customer Accounts:
 def get_all_accounts():
 	url = base_url + "manager-area/account_wallet_statement_manager."+ config_common["extension"]+"?walletaccounttype=REGISTERED_CUSTOMER"
-	get_page(url, False)
+	get_page(url, False, driver)
 	accounts = []
 	time.sleep(10)
 	driver.find_element(By.XPATH, "/html/body/div[1]/div[4]/form[2]/div[2]/div/input").click()
@@ -623,7 +650,6 @@ def get_all_accounts():
 		tbody = table.find_element(By.TAG_NAME, 'tbody')
 		headers = thead.find_elements(By.TAG_NAME, 'th')
 		rows = tbody.find_elements(By.TAG_NAME, 'tr')
-		print_mod("Got elements")
 		print_mod(len(rows))
 		for row in rows:
 			account = {}
@@ -653,7 +679,8 @@ def next_page(button_xpath):
 
 #Runs get_customer_accounts() for every customer
 #TODO validate customers are being updated correctly
-def get_all_customers_accounts():
+#TODO changed get_customer_accounts to include driver
+def get_all_customers_accounts(index, workers, driver):
 	headers = ["Date", "Balance", "Account Name", "Account Number", "Status", "Customer Code"]
 	mydb, cursor = connect_to_db()
 	cursor.execute("SELECT customer_code, last_login, full_name, phone_number, status, customer_id, last_entry FROM customer")
@@ -663,14 +690,18 @@ def get_all_customers_accounts():
 		c = json.load(f)
 	keys_list = list(c)
 	progress_start = config["progress"]["get_accounts"]
-	for i in range(progress_start, len(customers)):
-		c = customers[i]
+	#TODO changed to while for parallel
+	i = 0
+	workers = int(workers)
+	index = int(index)
+	while(i*workers + index < len(customers)):
+		customer_index = i*workers + index
+		c = customers[customer_index]
 		customer = {"Code" : c[0], "Last Login": c[1], "Full Name": c[2], "Sender Phone": c[3], "Status" : c[4], "Id": c[5], "Last entry": c[6]}
-		print(customer)
-		#customer = c[code]
-		print_mod(str(i) + ") ",end='')
+		print_mod(str(customer_index) + ") ",end='')
 		print_mod("Getting accounts of " + customer["Code"])
-		customer_account = get_customer_accounts(customer['Code'])
+		#TODO changed get_customer_accounts to include driver
+		customer_account = get_customer_accounts(customer['Code'], driver)
 		for detail in customer_account:
 			customer[detail] = customer_account[detail]
 		mydb,cursor = connect_to_db()
@@ -678,16 +709,18 @@ def get_all_customers_accounts():
 		mydb.commit()
 		disconnect_from_db(mydb, cursor)
 		#Start with the one above this one
-		with open("config.json", 'w') as f:
-			config["progress"]["get_accounts"] += 1
-			json.dump(config, f, indent=4)
+		#TODO commented out config progress	
+		#with open("config.json", 'w') as f:
+		#	config["progress"]["get_accounts"] += 1
+		#	json.dump(config, f, indent=4)
+		i = i + 1
 
 def get_all_transactions():
 	log_file = "get-transactions.log"
 	mydb,cursor = connect_to_db()
 	cursor.execute("SELECT customer_code FROM customer")
 	customers = cursor.fetchall()
-	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True)
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
 	transactions_start = config["progress"]["get_transactions"]
 	for i in range(transactions_start, len(customers)):
 		code = customers[i][0]
@@ -711,7 +744,9 @@ def get_all_transactions():
 def run_get_customers():
 	init_environment()
 	get_progress()
-	init_driver("Chrome")
+	#TODO added index for driver
+	global driver
+	driver = init_driver("Chrome", 0)
 	try:
 		if not login():
 			raise ValueError("Failed to Login in")
@@ -721,23 +756,41 @@ def run_get_customers():
 		if not config["progress"]["get_customers"]:
 			get_customers()
 		print_mod("Getting Customers with accounts")
-		get_all_customers_accounts()
+		#TODO Added how many workers there are
+		#Runs this part in parallel
+		#-------------------------------------------------------------
+		workers = 5
+		Pros = []
+		p = Process(target=get_all_customers_accounts, args=(0, workers, driver))
+		Pros.append(p)
+		p.start()
+		for i in range(1, int(workers)):
+			driver_parallel = init_driver("Chrome", i)
+			p = Process(target=get_all_customers_accounts, args=(i, workers, driver_parallel))
+			Pros.append(p)
+			p.start()
+			print("Waiting...")
+		for t in Pros:
+			t.join()
+		print("Done")
+		#-------------------------------------------------------------
 
 	except Exception:
 		print_mod(str(traceback.format_exc()))
 	finally:
 		logout()
-		close_driver()
+		close_driver(driver)
 
 
 def run_get_transactions():
         global log_file
         log_file = "logs/get-transactions.log"
         init_environment()
-        init_driver("Firefox")
+        init_driver("Chrome")
+        #TODO remove driver domain get
         try:
-                if not login():
-                        raise ValueError("Failed to Login in")
+                #if not login():
+                #        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_transactions()
@@ -751,6 +804,6 @@ def run_get_transactions():
         except Exception:
                 print_mod(str(traceback.format_exc()))
         finally:
-                logout()
+                #logout()
                 close_driver()
 
