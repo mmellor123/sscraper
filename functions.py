@@ -71,6 +71,8 @@ with open("config.json", 'r') as f:
 global config_common
 config_common=config['common']
 
+config_env=""
+
 def init_environment():
 	global base_url
 	global config_env
@@ -87,9 +89,7 @@ def init_environment():
 	spotbanc = spotbanc_api(base_url + config_env['api'], '200', 'app')
 
 def connect_to_db():
-        with open("config.json", 'r') as f:
-                config = json.load(f)
-                config_env = config["environment"]["production"]
+        global config_env
 
         db_config = config_env["database"]
         host = db_config["host"]
@@ -372,7 +372,7 @@ def init_driver(browser, index):
         for option in config_driver:
                 options.add_argument(option)
         if(browser == "Chrome"):
-                dest = "/home/max/Desktop/Personal/scraperGit1/sscraper/selenium_profiles/selenium"
+                dest = config["common"]["path"] + "/selenium_profiles/selenium"
 	
                 user_dir = "--user-data-dir="+ dest + str(index)
                 options.add_argument(user_dir)
@@ -383,7 +383,7 @@ def init_driver(browser, index):
 			#Create directory and point to the profile
                          shutil.rmtree(dest + str(index)+"/Profile3")
                          shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
-                         driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+                driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
                 driver = webdriver.Firefox(options=options, firefox_profile=fp)
         driver.maximize_window()
@@ -759,7 +759,7 @@ def run_get_customers():
 		#TODO Added how many workers there are
 		#Runs this part in parallel
 		#-------------------------------------------------------------
-		workers = 5
+		workers = 2
 		Pros = []
 		p = Process(target=get_all_customers_accounts, args=(0, workers, driver))
 		Pros.append(p)
