@@ -29,6 +29,8 @@ from multiprocessing import Process
 #3) Cross check customer details
 #4) Test progress data as script runs
 
+
+#TEST
 global log_file
 log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
