@@ -356,9 +356,9 @@ def get_accounts_no_owner():
 #TODO added function to init driver in parallel
 def init_driver_parallel(browser, index):
 	driver = init_driver(browser, index)
-	shutil.rmtree(dest + str(index)+"/Profile3")
+	shutil.rmtree(dest + str(index)+"/Default")
 	print("Done")
-	shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
+	shutil.copytree(dest+"0/Default", dest + str(index)+"/Default")
 
 def init_driver(browser, index):
         PATH = config["driver"]["path"]
@@ -373,17 +373,23 @@ def init_driver(browser, index):
                 options.add_argument(option)
         if(browser == "Chrome"):
                 dest = "/home/max/Desktop/Personal/scraperGit1/sscraper/selenium_profiles/selenium"
-	
+                #TODO always point to same profile 
+                profile = "--profile-directory=" + dest + "0/Default"
                 user_dir = "--user-data-dir="+ dest + str(index)
+                
                 options.add_argument(user_dir)
-                driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+		#options.add_argument("--remote-debugging-port=" + str(9222+index))
+                #options.add_argument(profile)
+                #driver = webdriver.Chrome(PATH + "chromedriver", options=options)
                 if index!=0:
+			#If a worker, copy profile first to a new location and point to that
                          close_driver(driver)
+                         print("init_driver worker " + str(index))
 			#TODO copy profile to other directory
 			#Create directory and point to the profile
-                         shutil.rmtree(dest + str(index)+"/Profile3")
-                         shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
-                         driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+                         shutil.rmtree(dest + str(index)+"/Default")
+                         shutil.copytree(dest+"0/Default", dest + str(index)+"/Default")
+                driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
                 driver = webdriver.Firefox(options=options, firefox_profile=fp)
         driver.maximize_window()
