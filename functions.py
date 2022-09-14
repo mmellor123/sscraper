@@ -25,6 +25,7 @@ import pickle
 import shutil
 from multiprocessing import Process
 
+#TODO COMMIT TEST
 #TODO
 #3) Cross check customer details
 #4) Test progress data as script runs
