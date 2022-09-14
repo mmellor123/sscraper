@@ -323,7 +323,7 @@ def add_customer_to_db(customer, cursor):
 		values = [customer['Signup Date'], customer['Id'], customer['Full Name'], customer['Status'], customer['Last Login'], customer['Code'], customer['First Name'], customer['Last Name'], customer['Sender Email address'], customer['Phone Number'], customer['Account Type'], dob, customer['Address Line 1'], customer['Address Line 2'],
 customer['City'], customer['State'], customer['Area/Post code'], customer['Employer'], customer['Annual Salary'], customer['Currency Salary'], customer['Last entry']]
 	except Exception as e:
-		print(e)
+		print_mod(str(traceback.format_exc()))
 		print_mod("Couldn't add customer to DB")
 		return
 	cursor.execute(add_customer_query, values)
@@ -385,7 +385,7 @@ def init_driver(browser, index):
 			#Create directory and point to the profile
                          shutil.rmtree(dest + str(index)+"/Profile3")
                          shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
-                driver = webdriver.Chrome(PATH + "chromedriver", options=options)
+                #driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
 		#TODO Firefox profile
                 driver = webdriver.Firefox(options=options)
@@ -472,8 +472,8 @@ def get_suspend_javascript(element):
 		return j_exec
 	
 def add_customer_code_to_db(customer, cursor):
-	data = [customer['Id'], customer['Code'], customer['Last Login'], customer['Full Name'], customer['Sender Phone'], customer['Status'], customer['Last entry'], customer['Code']]
-	cursor.execute("INSERT INTO customer (customer_id, customer_code, last_login, full_name, phone_number, status, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE customer_code=%s", data)
+	data = [customer['Id'], customer['Signup Date'], customer['Code'], customer['Last Login'], customer['Full Name'], customer['Sender Phone'], customer['Status'], customer['Last entry'], customer['Code']]
+	cursor.execute("INSERT INTO customer (customer_id, signup_date, customer_code, last_login, full_name, phone_number, status, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE customer_code=%s", data)
 
 
 def suspend_customers(action="SUSPEND"):
@@ -712,7 +712,7 @@ def next_page(button_xpath):
 def get_all_customers_accounts(index, workers, driver):
 	headers = ["Date", "Balance", "Account Name", "Account Number", "Status", "Customer Code"]
 	mydb, cursor = connect_to_db()
-	cursor.execute("SELECT customer_code, last_login, full_name, phone_number, status, customer_id, last_entry FROM customer")
+	cursor.execute("SELECT customer_code, signup_date, last_login, full_name, phone_number, status, customer_id, last_entry FROM customer")
 	customers = cursor.fetchall()
 	
 	with open('customers.json', 'r') as f:
@@ -726,7 +726,7 @@ def get_all_customers_accounts(index, workers, driver):
 	while(i*workers + index < len(customers)):
 		customer_index = i*workers + index
 		c = customers[customer_index]
-		customer = {"Code" : c[0], "Last Login": c[1], "Full Name": c[2], "Sender Phone": c[3], "Status" : c[4], "Id": c[5], "Last entry": c[6]}
+		customer = {"Code" : c[0], "Signup Date" : c[1],"Last Login": c[2], "Full Name": c[3], "Sender Phone": c[4], "Status" : c[5], "Id": c[6], "Last entry": c[7]}
 		print_mod(str(customer_index) + ") ",end='')
 		print_mod("Getting accounts of " + customer["Code"])
 		#TODO changed get_customer_accounts to include driver
@@ -792,8 +792,8 @@ def run_get_customers():
 	global driver
 	driver = init_driver("Chrome", 0)
 	try:
-		if not login():
-			raise ValueError("Failed to Login in")
+		#if not login():
+		#	raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
@@ -822,7 +822,7 @@ def run_get_customers():
 	except Exception:
 		print_mod(str(traceback.format_exc()))
 	finally:
-		logout()
+		#logout()
 		close_driver(driver)
 
 
