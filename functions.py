@@ -29,8 +29,6 @@ from multiprocessing import Process
 #3) Cross check customer details
 #4) Test progress data as script runs
 
-
-#TEST
 global log_file
 log_file = "logs/get-customers.log"
 def print_mod(text, end='\n'):
@@ -304,10 +302,11 @@ def add_account_to_db(account):
 
 
 
+#TODO ADDED Customer Sign up Date to Database
 def add_customer_to_db(customer, cursor):
 	cursor.execute("DELETE FROM account WHERE customer_code=%s", [customer['Code']])
 	
-	add_customer_query = "REPLACE INTO customer (customer_id, full_name,status, last_login, customer_code, first_name, last_name, email, phone_number, account_type, dob, address_line1, address_line2, city, state, postcode, employer, annual_salary, currency_salary, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+	add_customer_query = "REPLACE INTO customer (signup_date, customer_id, full_name,status, last_login, customer_code, first_name, last_name, email, phone_number, account_type, dob, address_line1, address_line2, city, state, postcode, employer, annual_salary, currency_salary, last_entry) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 	add_account_query = """INSERT INTO account (account_code, date, currency, balance, status, account_name, account_number, customer_code, last_entry) VALUES (%s,%s, %s, %s, %s, %s, %s, %s, %s) ON DUPLICATE KEY UPDATE account_code=%s"""
 	try:
 		dob = customer['Date Of Birth']
@@ -320,7 +319,7 @@ def add_customer_to_db(customer, cursor):
 		dob=None
 		pass
 	try:
-		values = [customer['Id'], customer['Full Name'], customer['Status'], customer['Last Login'], customer['Code'], customer['First Name'], customer['Last Name'], customer['Sender Email address'], customer['Phone Number'], customer['Account Type'], dob, customer['Address Line 1'], customer['Address Line 2'],
+		values = [customer['Signup Date'], customer['Id'], customer['Full Name'], customer['Status'], customer['Last Login'], customer['Code'], customer['First Name'], customer['Last Name'], customer['Sender Email address'], customer['Phone Number'], customer['Account Type'], dob, customer['Address Line 1'], customer['Address Line 2'],
 customer['City'], customer['State'], customer['Area/Post code'], customer['Employer'], customer['Annual Salary'], customer['Currency Salary'], customer['Last entry']]
 	except Exception as e:
 		print(e)
@@ -387,7 +386,8 @@ def init_driver(browser, index):
                          shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
                 driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
-                driver = webdriver.Firefox(options=options, firefox_profile=fp)
+		#TODO Firefox profile
+                driver = webdriver.Firefox(options=options)
         driver.maximize_window()
         driver.set_window_position(0,0)
         driver.set_window_size(1920, 1080)
@@ -506,6 +506,32 @@ def get_suspended_customer_transactions():
 	disconnect_from_db(mydb, cursor)
 	#Suspend again
 	suspend_customers()
+
+#TODO added get_signup date finder
+def get_signup():
+	url = base_url + "manager-area/manage-customers."+config_common["extension"]
+	get_page(url, False, driver)
+	wait = WebDriverWait(driver, 100)
+	table_xpath = 'table'
+	mydb, cursor = connect_to_db()
+	while True:
+		wait.until(EC.presence_of_element_located((By.ID, table_xpath)))
+		table = driver.find_element(By.ID, table_xpath)
+		rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
+		headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
+		for row in rows:
+			row = row.find_elements(By.TAG_NAME, 'td')
+			signup_date = row[1].text
+			code = row[2].text
+			cursor.execute("UPDATE customer SET signup_date=%s WHERE customer_code=%s",[signup_date, code])
+			mydb.commit()
+		has_next_page, next_button = next_page('table_next')
+		if(has_next_page):
+			print_mod("Going to next page")
+			next_button.click()
+		else:
+			break
+	disconnect_from_db(mydb, cursor)
 
 def get_customers():
 	print_mod("Getting Customers... ", end='')
@@ -742,6 +768,21 @@ def get_all_transactions():
 	print_mod(cursor.rowcount, " record inserted")
 	disconnect_from_db(mydb, cursor)
 
+#Def added run_get_signups
+def run_get_signups():
+	init_environment()
+	global driver
+	driver = init_driver("Chrome", 0)
+	try:
+		if not login():
+			raise ValueError("Failed to Login")
+		get_signup()
+	except:
+		print_mod(str(traceback.format_exc()))
+	finally:
+		logout()
+		close_driver(driver)
+
 
 def run_get_customers():
 	init_environment()
@@ -761,7 +802,7 @@ def run_get_customers():
 		#TODO Added how many workers there are
 		#Runs this part in parallel
 		#-------------------------------------------------------------
-		workers = 2
+		workers = 1
 		Pros = []
 		p = Process(target=get_all_customers_accounts, args=(0, workers, driver))
 		Pros.append(p)
@@ -788,11 +829,12 @@ def run_get_transactions():
         global log_file
         log_file = "logs/get-transactions.log"
         init_environment()
-        init_driver("Chrome")
+        global driver
+        driver = init_driver("Firefox", 0)
         #TODO remove driver domain get
         try:
-                #if not login():
-                #        raise ValueError("Failed to Login in")
+                if not login():
+                        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
                 get_transactions()
@@ -806,6 +848,6 @@ def run_get_transactions():
         except Exception:
                 print_mod(str(traceback.format_exc()))
         finally:
-                #logout()
+                logout()
                 close_driver()
 
