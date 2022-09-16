@@ -211,13 +211,13 @@ def get_transactions_worker(customers_id, index, workers, driver):
 	start.clear()
 	start.send_keys("23/05/2020")
 	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
-	i= 0
+	j= 0
 	#for each customer in that this worker with work on
-	while(i*workers + index < len(customers_id)):
+	while(j*workers + index < len(customers_id)):
 		#Scrape their data and save it to database
-		customer_id = customers_id[i*workers + index]
+		customer_id = customers_id[j*workers + index]
 		transactions = []
-		print(str(i) + "/" + str(len(customers_id)) + " customers")
+		print(str(j*workers + index) + "/" + str(len(customers_id)) + " customers")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
 		time.sleep(2)
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
@@ -267,7 +267,8 @@ def get_transactions_worker(customers_id, index, workers, driver):
 			add_transaction_to_db(transaction, cursor, "transaction_tmp")
 			mydb.commit()
 		disconnect_from_db(mydb, cursor)
-		i = i + 1
+		j = j + 1
+		print("WORKER " + str(index) + " i IS EQUAL TO " + str(j))
 	
 		
 	
@@ -301,7 +302,7 @@ def get_transactions(driver, workers):
 	Pros.append(p)
 	p.start()
 	for i in range(1, workers):
-		driver_parallel = init_driver("Chrome", i)
+		driver_parallel = init_driver("Chrome", 2+i)
 		p = Process(target=get_transactions_worker, args=(customers_id, i, workers, driver_parallel))	
 		Pros.append(p)
 		p.start()
@@ -887,14 +888,14 @@ def run_get_transactions():
         init_environment()
         global driver
 	#TODO changed from Firefox to Chrome
-        driver = init_driver("Chrome", 0)
+        driver = init_driver("Chrome", 2)
         #TODO remove driver domain get
         try:
-                if not login():
-                        raise ValueError("Failed to Login in")
+                #if not login():
+                #        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
-                get_transactions(driver, workers=1)
+                get_transactions(driver, workers=2)
 		#Unsuspends, gets transactions and then suspends again
                 #TODO disabled get_suspended_customers
 		#get_suspended_customer_transactions()
@@ -905,6 +906,6 @@ def run_get_transactions():
         except Exception:
                 print_mod(str(traceback.format_exc()))
         finally:
-                logout()
+                #logout()
                 close_driver(driver)
 
