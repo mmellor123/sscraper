@@ -217,7 +217,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 		#Scrape their data and save it to database
 		customer_id = customers_id[j*workers + index]
 		transactions = []
-		print(str(j*workers + index) + "/" + str(len(customers_id)) + " customers")
+		print_mod(str(j*workers + index) + "/" + str(len(customers_id)) + " customers")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
 		time.sleep(2)
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
@@ -228,7 +228,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 			account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3]
 
 		for account_number in account_numbers:
-			print("Account Number " + str(account_number))
+			print_mod("   Account Number " + str(account_number))
 			Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
 			#Special case for customer Smile Money Limited
@@ -260,7 +260,6 @@ def get_transactions_worker(customers_id, index, workers, driver):
 				if(has_next_page):
 					next_button.click()
 				else:
-					print_mod("No next page")
 					break
 		mydb, cursor = connect_to_db()
 		for transaction in transactions:
@@ -268,8 +267,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 			mydb.commit()
 		disconnect_from_db(mydb, cursor)
 		j = j + 1
-		print("WORKER " + str(index) + " i IS EQUAL TO " + str(j))
-	
+
 		
 	
 
