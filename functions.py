@@ -25,7 +25,6 @@ import pickle
 import shutil
 from multiprocessing import Process
 
-#TODO COMMIT TEST
 #TODO
 #3) Cross check customer details
 #4) Test progress data as script runs
@@ -209,7 +208,8 @@ def get_transactions_worker(customers_id, index, workers, driver):
 	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
 	end.clear()
 	start.clear()
-	start.send_keys("23/05/2020")
+
+	start.send_keys("16/09/2022")
 	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
 	j= 0
 	#for each customer in that this worker with work on
@@ -219,7 +219,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 		transactions = []
 		print_mod(str(j*workers + index) + "/" + str(len(customers_id)) + " customers")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
-		time.sleep(2)
+		time.sleep(1)
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
 		accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
 		account_numbers = {}
@@ -235,7 +235,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 			if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
 				sleep(60*5)
 			else:
-				sleep(3)
+				sleep(1)
 			table_id = 'tbl'
 			#Wait for next button to appear
 			wait.until(EC.presence_of_element_located((By.ID, 'tbl_next')))
@@ -263,7 +263,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 					break
 		mydb, cursor = connect_to_db()
 		for transaction in transactions:
-			add_transaction_to_db(transaction, cursor, "transaction_tmp")
+			add_transaction_to_db(transaction, cursor, "transaction_tmp2")
 			mydb.commit()
 		disconnect_from_db(mydb, cursor)
 		j = j + 1
@@ -274,7 +274,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 def get_transactions(driver, workers):
 	mydb, cursor = connect_to_db()
 	#TODO Move delete from transaction_tmp somewhere else?
-	cursor.execute("DELETE FROM transaction_tmp")
+	cursor.execute("DELETE FROM transaction_tmp2")
 	mydb.commit()
 	disconnect_from_db(mydb, cursor)
 	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
@@ -316,7 +316,7 @@ def merge_accounts_and_transactions():
 	customers = cursor.fetchall()
 	for customer in customers:
 		print(customer)
-		query = "UPDATE transaction_tmp set account_code=concat(account_code,%s) WHERE customer_code=%s"
+		query = "UPDATE transaction_tmp2 set account_code=concat(account_code,%s) WHERE customer_code=%s"
 		values = [customer[0], customer[1]]
 		cursor.execute(query,values)
 	mydb.commit()
@@ -542,7 +542,7 @@ def get_suspended_customer_transactions():
 		transactions = get_account_ledger(customer[0],customer[1])
 		for transaction in transactions:
 			print(transaction)
-			add_transaction_to_db(transaction, cursor, "transaction_tmp")
+			add_transaction_to_db(transaction, cursor, "transaction_tmp2")
 			mydb.commit()
 	time.sleep(2)
 	disconnect_from_db(mydb, cursor)
@@ -893,7 +893,7 @@ def run_get_transactions():
                 #        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
-                get_transactions(driver, workers=2)
+                get_transactions(driver, workers=1)
 		#Unsuspends, gets transactions and then suspends again
                 #TODO disabled get_suspended_customers
 		#get_suspended_customer_transactions()
