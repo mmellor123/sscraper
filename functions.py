@@ -253,7 +253,7 @@ def get_transactions_worker(customers_id, index, workers, driver):
 					for i, header in enumerate(headers):
 						transaction[header.text] = data[i].text
 					transaction["Account Code"] = account_numbers[account_number]
-					transaction["Customer Code"] = customer_id
+					transaction["Customer Code"] = customer_id[0]
 					transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
 					transactions.append(transaction)
 				#Go to next page
