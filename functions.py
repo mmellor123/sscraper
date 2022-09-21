@@ -79,6 +79,7 @@ def init_environment():
 	config_env = config["environment"]["staging"]
 	print_mod("-----------------------------------------")
 	print_mod(datetime.today())
+	#TODO modified init_environment
 	#Production/Staging?
 	print_mod("Running on STAGING ENVIRONEMNT as default... ")
 	if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
@@ -268,37 +269,36 @@ def get_transactions_worker(customers_id, index, workers, driver):
 		disconnect_from_db(mydb, cursor)
 		j = j + 1
 
-		
-	
-
-def get_transactions(driver, workers):
+def get_transactions(driver, worker, workers):
 	mydb, cursor = connect_to_db()
 	#TODO Move delete from transaction_tmp somewhere else?
-	cursor.execute("DELETE FROM transaction_tmp2")
-	mydb.commit()
-	disconnect_from_db(mydb, cursor)
-	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
-	wait = WebDriverWait(driver, 60)
-	try:
-		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
-	except:
-		print_mod("Page not loading. Returning")
-		return
-	start = driver.find_element(By.ID, 'j_idt62:fromDate_input')
-	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
-	end.clear()
-	start.clear()
-	start.send_keys("23/05/2020")
-	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
-	customers = driver.find_element(By.ID, 'j_idt62:customer_search').find_elements(By.TAG_NAME, 'option')
-	customers_id = []
-	for c in customers:
-		customers_id.append(c.get_attribute("value"))
+	if(worker == 0):
+		cursor.execute("DELETE FROM transaction_tmp2")
+		cursor.execute("DELETE FROM customer_id_from_trans_page")
+		mydb.commit()
+		get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
+		wait = WebDriverWait(driver, 60)
+		try:
+			wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
+		except:
+			print_mod("Page not loading. Returning")
+			return
+
+		customers = driver.find_element(By.ID, 'j_idt62:customer_search').find_elements(By.TAG_NAME, 'option')
+		customers_id = []
+		for c in customers:
+			customers_id.append(c.get_attribute("value"))
+			cursor.execute("INSERT INTO customer_id_from_trans_page (customer_id) VALUES (%s)", [c.get_attribute("value")])
+		mydb.commit()
+	cursor.execute("SELECT * FROM customer_id_from_trans_page")
+	customers_id = cursor.fetchall()
+
 	#TODO Parallel split up work
 	Pros = []
-	p = Process(target=get_transactions_worker, args=(customers_id, 0, workers, driver))
+	p = Process(target=get_transactions_worker, args=(customers_id, worker, workers, driver))
 	Pros.append(p)
 	p.start()
+	"""
 	for i in range(1, workers):
 		driver_parallel = init_driver("Chrome", 2+i)
 		p = Process(target=get_transactions_worker, args=(customers_id, i, workers, driver_parallel))	
@@ -306,6 +306,7 @@ def get_transactions(driver, workers):
 		p.start()
 		time.sleep(10)
 		print("Waiting...")
+	"""
 	for t in Pros:
 		t.join()
 	print("Finished getting transactions")
@@ -424,8 +425,8 @@ def init_driver(browser, index):
                          close_driver(driver)
 			#TODO copy profile to other directory
 			#Create directory and point to the profile
-                         shutil.rmtree(dest + str(index)+"/Profile3")
-                         shutil.copytree(dest+"0/Profile3", dest + str(index)+"/Profile3")
+                         shutil.rmtree(dest + str(index)+"/Default")
+                         shutil.copytree(dest+"0/Default", dest + str(index)+"/Default")
                          driver = webdriver.Chrome(PATH + "chromedriver", options=options)
         elif (browser == "Firefox"):
 		#TODO Firefox profile
@@ -456,6 +457,7 @@ def is_logged_in():
 def login():
 	print_mod("Logging In")
 	try:
+		#TODO Email and Password are inputs
 		email = input("Enter Email: ")
 		password = getpass.getpass()
 		spotbanc.login(email, password)
@@ -785,8 +787,8 @@ def get_all_customers_accounts(index, workers, driver):
 		#	json.dump(config, f, indent=4)
 		i = i + 1
 	#Close this driver if it's not the first	
-	if(index  != 0):
-		close_driver(driver)
+	#if(index  != 0):
+		#close_driver(driver)
 
 def get_all_transactions():
 	log_file = "get-transactions.log"
@@ -819,7 +821,7 @@ def run_get_signups():
 	global driver
 	driver = init_driver("Chrome", 0)
 	try:
-		if not login():
+		if not login(email, password):
 			raise ValueError("Failed to Login")
 		get_signup()
 	except:
@@ -837,9 +839,13 @@ def get_google(index, driver):
 		print_mod(str(traceback.format_exc()))	
 	close_driver(driver)
 
-def run_get_customers():
+def run_get_customers(worker, workers):
+	global log_file
+	log_file = "logs/get_customers/worker" + str(worker)
 	init_environment()
-	get_progress()
+	#TODO removed get_progress
+	if(worker == 0):
+		get_progress()
 	#TODO added index for driver
 	global driver
 	driver = init_driver("Chrome", 0)
@@ -849,17 +855,17 @@ def run_get_customers():
 
 		print_mod("Getting Customers")
 		#Only run if set to false
-		if not config["progress"]["get_customers"]:
+		if worker == 0:
 			get_customers()
 		print_mod("Getting Customers with accounts")
 		#TODO Added how many workers there are
 		#Runs this part in parallel
 		#-------------------------------------------------------------
-		workers = 2
 		Pros = []
-		p = Process(target=get_all_customers_accounts, args=(0, workers, driver))
+		p = Process(target=get_all_customers_accounts, args=(worker, workers, driver))
 		Pros.append(p)
 		p.start()
+		"""
 		for i in range(1, int(workers)):
 			driver_parallel = init_driver("Chrome", i)
 			p = Process(target=get_all_customers_accounts, args=(i, workers, driver_parallel))
@@ -868,9 +874,11 @@ def run_get_customers():
 			p.start()
 			time.sleep(10)
 			print("Waiting...")
+		"""
 		for t in Pros:
 			t.join()
 		print("Done")
+		
 		#-------------------------------------------------------------
 
 	except Exception:
@@ -880,20 +888,20 @@ def run_get_customers():
 		close_driver(driver)
 
 
-def run_get_transactions():
+def run_get_transactions(worker, workers):
         global log_file
-        log_file = "logs/get-transactions.log"
+        log_file = "logs/get_transactions/worker"+str(worker)
         init_environment()
         global driver
 	#TODO changed from Firefox to Chrome
-        driver = init_driver("Chrome", 2)
+        driver = init_driver("Chrome", worker)
         #TODO remove driver domain get
         try:
-                #if not login():
-                #        raise ValueError("Failed to Login in")
+                if not login():
+                        raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
-                get_transactions(driver, workers=1)
+                get_transactions(driver, worker, workers)
 		#Unsuspends, gets transactions and then suspends again
                 #TODO disabled get_suspended_customers
 		#get_suspended_customer_transactions()
@@ -904,6 +912,6 @@ def run_get_transactions():
         except Exception:
                 print_mod(str(traceback.format_exc()))
         finally:
-                #logout()
+                logout()
                 close_driver(driver)
 
