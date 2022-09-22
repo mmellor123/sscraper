@@ -52,7 +52,8 @@ def get_yes_no_input(message):
 
 
 def get_progress():
-        if(not get_yes_no_input("Continue from saved progress")):
+        #if(not get_yes_no_input("Continue from saved progress")):
+	if(True):
                 with open("config.json", 'w') as f:
                         config["progress"] = {"get_customers": False, "get_accounts": 0, "get_transactions": 0}
                         json.dump(config, f, indent=4)
@@ -73,7 +74,7 @@ config_common=config['common']
 
 config_env=""
 
-def init_environment():
+def init_environment(is_production):
 	global base_url
 	global config_env
 	config_env = config["environment"]["staging"]
@@ -82,7 +83,7 @@ def init_environment():
 	#TODO modified init_environment
 	#Production/Staging?
 	print_mod("Running on STAGING ENVIRONEMNT as default... ")
-	if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
+	if(is_production):
 		print_mod("Running on PRODUCTION ENVIRONMENT")
 		config_env = config["environment"]["production"]
 	base_url = config_env["url"]
@@ -290,6 +291,9 @@ def get_transactions(driver, worker, workers):
 			customers_id.append(c.get_attribute("value"))
 			cursor.execute("INSERT INTO customer_id_from_trans_page (customer_id) VALUES (%s)", [c.get_attribute("value")])
 		mydb.commit()
+	#Wait for worker0 to scrape customer_ids
+	else:
+		time.sleep(30)
 	cursor.execute("SELECT * FROM customer_id_from_trans_page")
 	customers_id = cursor.fetchall()
 
@@ -419,7 +423,7 @@ def init_driver(browser, index):
                 dest = config["common"]["path"] + "/selenium_profiles/selenium"
 	
                 user_dir = "--user-data-dir="+ dest + str(index)
-                options.add_argument(user_dir)
+                #options.add_argument(user_dir)
                 driver = webdriver.Chrome(PATH + "chromedriver", options=options)
                 if index!=0:
                          close_driver(driver)
@@ -454,12 +458,12 @@ def is_logged_in():
 	except NoSuchElementException:
 		return True;
 
-def login():
+def login(email, password):
 	print_mod("Logging In")
 	try:
 		#TODO Email and Password are inputs
-		email = input("Enter Email: ")
-		password = getpass.getpass()
+		#email = input("Enter Email: ")
+		#password = getpass.getpass()
 		spotbanc.login(email, password)
 		#Log into API first to see if credentials correct
 		if not spotbanc.is_logged_in():
@@ -839,10 +843,10 @@ def get_google(index, driver):
 		print_mod(str(traceback.format_exc()))	
 	close_driver(driver)
 
-def run_get_customers(worker, workers):
+def run_get_customers(worker, workers, email, password, is_production):
 	global log_file
 	log_file = "logs/get_customers/worker" + str(worker)
-	init_environment()
+	init_environment(is_production)
 	#TODO removed get_progress
 	if(worker == 0):
 		get_progress()
@@ -850,13 +854,22 @@ def run_get_customers(worker, workers):
 	global driver
 	driver = init_driver("Chrome", 0)
 	try:
-		if not login():
+		if not login(email, password):
 			raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
 		if worker == 0:
 			get_customers()
+		mydb, cursor = connect_to_db()
+		with open("config.json", 'r') as f:
+			config_progress = json.load(f)['progress']['get_customers']
+		#Wait for customers to be scraped first before getting profiles.
+		while(not config_progress):
+			time.sleep(10)
+			with open('config.json', 'r') as f:
+				config_progress = json.load(f)['progress']['get_customers']
+
 		print_mod("Getting Customers with accounts")
 		#TODO Added how many workers there are
 		#Runs this part in parallel
@@ -888,16 +901,16 @@ def run_get_customers(worker, workers):
 		close_driver(driver)
 
 
-def run_get_transactions(worker, workers):
+def run_get_transactions(worker, workers, email, password, is_production):
         global log_file
         log_file = "logs/get_transactions/worker"+str(worker)
-        init_environment()
+        init_environment(is_production)
         global driver
 	#TODO changed from Firefox to Chrome
         driver = init_driver("Chrome", worker)
         #TODO remove driver domain get
         try:
-                if not login():
+                if not login(email, password):
                         raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
