@@ -195,6 +195,97 @@ def sleep(n):
 	for i in range(n):
 		time.sleep(1)
 
+def get_transactions_customer_id(customer_id, driver):
+	transaction_table="transaction_tmp2"
+	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
+	wait = WebDriverWait(driver, 60)
+	#Clear customer transactions first
+	mydb, cursor = connect_to_db()
+	cursor.execute("DELETE FROM "+transaction_table+" WHERE customer_code=%s",[str(customer_id)])
+	mydb.commit()
+	disconnect_from_db(mydb, cursor)
+	try:
+		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:fromDate_input')))
+	except:
+		print_mod("Page not loading. Returning")
+		return
+	dates = [{"start":"02/01/2020","end":"01/06/2020" }, {"start":"02/06/2020","end":"01/01/2021" }, {"start":"02/01/2021","end":"01/06/2021" }, {"start":"02/06/2021","end":"01/01/2022" }, {"start":"02/01/2022","end":"01/06/2022" }, {"start":"02/06/2022","end":"01/01/2023" }]
+	for date in dates:
+		get_transactions_customer_id_from_date(customer_id, driver, date['start'], date['end'])
+
+def get_transactions_customer_id_from_date(customer_id, driver, start_date, end_date):
+	transaction_table="transaction_tmp2"
+	wait = WebDriverWait(driver, 60)
+	start = driver.find_element(By.ID, 'j_idt62:fromDate_input')
+	end = driver.find_element(By.ID, 'j_idt62:toDate_input')
+	end.clear()
+	start.clear()
+
+	#start.send_keys("16/09/2022")
+	start.send_keys(start_date)
+	#end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
+	end.send_keys(end_date)
+	#TODO delete customer transactions for this customer
+
+	transactions = []
+	print_mod("customers ("+str(customer_id)+")")
+	Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
+	time.sleep(2)
+	wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
+	accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
+	account_numbers = {}
+	for account in accounts:
+		account_number = account.text.replace('[', '').replace(']','').split()
+		account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3]
+
+	mydb, cursor = connect_to_db()
+	for account_number in account_numbers:
+		driver.save_screenshot("saved screenshot")
+		transactions = []
+		print_mod("   Account Number " + str(account_number))
+		Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
+		driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
+		#Special case for customer Smile Money Limited
+		if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+			sleep(60*5)
+		else:
+			sleep(1)
+		table_id = 'tbl'
+		#Wait for next button to appear
+		wait.until(EC.presence_of_element_located((By.ID, 'tbl_next')))
+		while True:
+			table = driver.find_element(By.ID, table_id)
+			headers = table.find_element(By.TAG_NAME, 'thead').find_elements(By.TAG_NAME, 'th')
+			rows = table.find_element(By.TAG_NAME, 'tbody').find_elements(By.TAG_NAME, 'tr')
+			for row in rows:
+				transaction = {"Last entry": datetime.today().strftime("%Y-%m-%d")}
+				data = row.find_elements(By.TAG_NAME, 'td')
+				#No transactions on this page
+				if(len(data) == 1):
+					break
+				for i, header in enumerate(headers):
+					transaction[header.text] = data[i].text
+				transaction["Account Code"] = account_numbers[account_number]
+				transaction["Customer Code"] = customer_id
+				transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
+				transactions.append(transaction)
+			#TODO add transactions after scraping each page
+			for transaction in transactions:
+				add_transaction_to_db(transaction, cursor, transaction_table)
+				mydb.commit()
+			transactions = []
+			#Go to next page
+			has_next_page,next_button = next_page('tbl_next')
+			if(has_next_page):
+				next_button.click()
+			else:
+				break
+	#TODO removed adding all customer transactions at once
+	disconnect_from_db(mydb, cursor)
+
+
+		
+
 def get_transactions_worker(customers_id, index, workers, driver):
 	#Open up ledger page again.
 	transaction_table = "transaction_tmp2"
@@ -217,6 +308,10 @@ def get_transactions_worker(customers_id, index, workers, driver):
 	j= 0
 	#for each customer in that this worker with work on
 	while(j*workers + index < len(customers_id)):
+		#TODO run from here again
+		if(j*workers + index < 437):
+			j = j + 1
+			continue
 		#Scrape their data and save it to database
 		customer_id = customers_id[j*workers + index]
 		#TODO Don't look at Smile Money Limited Account
@@ -918,6 +1013,34 @@ def run_get_transactions(worker, workers):
 
                 print_mod("Getting transactions")
                 get_transactions(driver, worker, workers)
+		#Unsuspends, gets transactions and then suspends again
+                #TODO disabled get_suspended_customers
+		#get_suspended_customer_transactions()
+		#TODO check that account codes are correctly generated
+                print_mod("Updating transaction account codes...")
+                #merge_accounts_and_transactions()
+
+        except Exception:
+                print_mod(str(traceback.format_exc()))
+        finally:
+                logout()
+                close_driver(driver)
+
+#Get specific customer.
+def run_get_transactions_customer(customer_id):
+        global log_file
+        log_file = "logs/get_transactions/"+customer_id
+        init_environment()
+        global driver
+	#TODO changed from Firefox to Chrome
+        driver = init_driver("Chrome", 3)
+        #TODO remove driver domain get
+        try:
+                if not login():
+                        raise ValueError("Failed to Login in")
+
+                print_mod("Getting transactions")
+                get_transactions_customer_id(customer_id, driver)
 		#Unsuspends, gets transactions and then suspends again
                 #TODO disabled get_suspended_customers
 		#get_suspended_customer_transactions()
