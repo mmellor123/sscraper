@@ -52,8 +52,7 @@ def get_yes_no_input(message):
 
 
 def get_progress():
-        #if(not get_yes_no_input("Continue from saved progress")):
-	if(True):
+        if(not get_yes_no_input("Continue from saved progress")):
                 with open("config.json", 'w') as f:
                         config["progress"] = {"get_customers": False, "get_accounts": 0, "get_transactions": 0}
                         json.dump(config, f, indent=4)
@@ -74,7 +73,7 @@ config_common=config['common']
 
 config_env=""
 
-def init_environment(is_production):
+def init_environment():
 	global base_url
 	global config_env
 	config_env = config["environment"]["staging"]
@@ -83,7 +82,7 @@ def init_environment(is_production):
 	#TODO modified init_environment
 	#Production/Staging?
 	print_mod("Running on STAGING ENVIRONEMNT as default... ")
-	if(is_production):
+	if(get_yes_no_input("Run on PRODUCTION ENVIRONMENT?")):
 		print_mod("Running on PRODUCTION ENVIRONMENT")
 		config_env = config["environment"]["production"]
 	base_url = config_env["url"]
@@ -122,7 +121,7 @@ def get_page(url, check_current_page, driver):
 		return
 	else:
 		driver.get(url)
-		time.sleep(5)
+		#TODO removed time to wait for page
 		attempts = config["common"]["no_of_refreshes"]
 		for i in range(attempts):
 			wait = WebDriverWait(driver, max_wait)
@@ -198,6 +197,7 @@ def sleep(n):
 
 def get_transactions_worker(customers_id, index, workers, driver):
 	#Open up ledger page again.
+	transaction_table = "transaction_tmp2"
 	wait = WebDriverWait(driver, 60)
 	get_page(base_url + "manager-area/wallet_statement_manager."+config_common["extension"]+"?search-type=REGISTERED_CUSTOMER", True, driver)
 	try:
@@ -211,17 +211,27 @@ def get_transactions_worker(customers_id, index, workers, driver):
 	end.clear()
 	start.clear()
 
-	start.send_keys("16/09/2022")
+	#start.send_keys("16/09/2022")
+	start.send_keys("01/01/2020")
 	end.send_keys((datetime.today() + d.timedelta(days=1*365)).strftime("%d/%m/%Y"))
 	j= 0
 	#for each customer in that this worker with work on
 	while(j*workers + index < len(customers_id)):
 		#Scrape their data and save it to database
 		customer_id = customers_id[j*workers + index]
+		#TODO Don't look at Smile Money Limited Account
+		if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+			continue
+		#TODO delete customer transactions for this customer
+		mydb, cursor = connect_to_db()
+		cursor.execute("DELETE FROM "+transaction_table+" WHERE customer_code=%s",[str(customer_id)])
+		mydb.commit()
+		disconnect_from_db(mydb, cursor)
+
 		transactions = []
-		print_mod(str(j*workers + index) + "/" + str(len(customers_id)) + " customers")
+		print_mod(str(j*workers + index) + "/" + str(len(customers_id)) + " customers ("+str(customer_id)+")")
 		Select(driver.find_element(By.ID, 'j_idt62:customer_search')).select_by_value(customer_id)
-		time.sleep(1)
+		time.sleep(2)
 		wait.until(EC.presence_of_element_located((By.ID, 'j_idt62:wallet-accounts-list')))
 		accounts = driver.find_element(By.ID, 'j_idt62:wallet-accounts-list').find_elements(By.TAG_NAME, 'option')
 		account_numbers = {}
@@ -229,7 +239,9 @@ def get_transactions_worker(customers_id, index, workers, driver):
 			account_number = account.text.replace('[', '').replace(']','').split()
 			account_numbers[account.get_attribute('value')] = account_number[0] + account_number[1][0:3]
 
+		mydb, cursor = connect_to_db()
 		for account_number in account_numbers:
+			transactions = []
 			print_mod("   Account Number " + str(account_number))
 			Select(driver.find_element(By.ID, 'j_idt62:wallet-accounts-list')).select_by_value(account_number)
 			driver.find_element(By.XPATH, "//input[@name='j_idt62:j_idt84']").click()
@@ -257,16 +269,18 @@ def get_transactions_worker(customers_id, index, workers, driver):
 					transaction["Customer Code"] = customer_id[0]
 					transaction['Last entry'] = datetime.now().strftime("%Y-%m-%d")
 					transactions.append(transaction)
+				#TODO add transactions after scraping each page
+				for transaction in transactions:
+					add_transaction_to_db(transaction, cursor, transaction_table)
+					mydb.commit()
+				transactions = []
 				#Go to next page
 				has_next_page,next_button = next_page('tbl_next')
 				if(has_next_page):
 					next_button.click()
 				else:
 					break
-		mydb, cursor = connect_to_db()
-		for transaction in transactions:
-			add_transaction_to_db(transaction, cursor, "transaction_tmp2")
-			mydb.commit()
+		#TODO removed adding all customer transactions at once
 		disconnect_from_db(mydb, cursor)
 		j = j + 1
 
@@ -291,9 +305,6 @@ def get_transactions(driver, worker, workers):
 			customers_id.append(c.get_attribute("value"))
 			cursor.execute("INSERT INTO customer_id_from_trans_page (customer_id) VALUES (%s)", [c.get_attribute("value")])
 		mydb.commit()
-	#Wait for worker0 to scrape customer_ids
-	else:
-		time.sleep(30)
 	cursor.execute("SELECT * FROM customer_id_from_trans_page")
 	customers_id = cursor.fetchall()
 
@@ -423,7 +434,7 @@ def init_driver(browser, index):
                 dest = config["common"]["path"] + "/selenium_profiles/selenium"
 	
                 user_dir = "--user-data-dir="+ dest + str(index)
-                #options.add_argument(user_dir)
+                options.add_argument(user_dir)
                 driver = webdriver.Chrome(PATH + "chromedriver", options=options)
                 if index!=0:
                          close_driver(driver)
@@ -458,12 +469,12 @@ def is_logged_in():
 	except NoSuchElementException:
 		return True;
 
-def login(email, password):
+def login():
 	print_mod("Logging In")
 	try:
 		#TODO Email and Password are inputs
-		#email = input("Enter Email: ")
-		#password = getpass.getpass()
+		email = input("Enter Email: ")
+		password = getpass.getpass()
 		spotbanc.login(email, password)
 		#Log into API first to see if credentials correct
 		if not spotbanc.is_logged_in():
@@ -709,7 +720,7 @@ def get_customer_accounts(code, driver):
 	except NoSuchElementException as e:
 		return customer
 	except Exception as e:
-		print(e)
+		print_mod(e)
 		return customer
 
 #Get accounts from Accounting > View Customer Accounts:
@@ -843,10 +854,10 @@ def get_google(index, driver):
 		print_mod(str(traceback.format_exc()))	
 	close_driver(driver)
 
-def run_get_customers(worker, workers, email, password, is_production):
+def run_get_customers(worker, workers):
 	global log_file
 	log_file = "logs/get_customers/worker" + str(worker)
-	init_environment(is_production)
+	init_environment()
 	#TODO removed get_progress
 	if(worker == 0):
 		get_progress()
@@ -854,22 +865,13 @@ def run_get_customers(worker, workers, email, password, is_production):
 	global driver
 	driver = init_driver("Chrome", 0)
 	try:
-		if not login(email, password):
+		if not login():
 			raise ValueError("Failed to Login in")
 
 		print_mod("Getting Customers")
 		#Only run if set to false
 		if worker == 0:
 			get_customers()
-		mydb, cursor = connect_to_db()
-		with open("config.json", 'r') as f:
-			config_progress = json.load(f)['progress']['get_customers']
-		#Wait for customers to be scraped first before getting profiles.
-		while(not config_progress):
-			time.sleep(10)
-			with open('config.json', 'r') as f:
-				config_progress = json.load(f)['progress']['get_customers']
-
 		print_mod("Getting Customers with accounts")
 		#TODO Added how many workers there are
 		#Runs this part in parallel
@@ -901,16 +903,16 @@ def run_get_customers(worker, workers, email, password, is_production):
 		close_driver(driver)
 
 
-def run_get_transactions(worker, workers, email, password, is_production):
+def run_get_transactions(worker, workers):
         global log_file
         log_file = "logs/get_transactions/worker"+str(worker)
-        init_environment(is_production)
+        init_environment()
         global driver
 	#TODO changed from Firefox to Chrome
         driver = init_driver("Chrome", worker)
         #TODO remove driver domain get
         try:
-                if not login(email, password):
+                if not login():
                         raise ValueError("Failed to Login in")
 
                 print_mod("Getting transactions")
