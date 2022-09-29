@@ -220,7 +220,8 @@ def get_transactions_worker(customers_id, index, workers, driver):
 		#Scrape their data and save it to database
 		customer_id = customers_id[j*workers + index]
 		#TODO Don't look at Smile Money Limited Account
-		if(customer_id=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+		if(customer_id[0]=="ae96be7f-7d9a-4209-a476-222fdfc35a09"):
+			j = j + 1
 			continue
 		#TODO delete customer transactions for this customer
 		mydb, cursor = connect_to_db()
